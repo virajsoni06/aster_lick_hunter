@@ -4,6 +4,7 @@
     "simulate_only": true,
     "db_path": "bot.db",
     "multi_assets_mode": true,
+    "hedge_mode": true,
     "set_margin_type": true,
     "set_leverage": true,
     "use_usdt_volume": true
@@ -16,7 +17,8 @@
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "position_side": "BOTH"
+      "position_side": "BOTH",
+      "hedge_position_side": "LONG"
     },
     "ETHUSDT": {
       "volume_threshold": 500000.0,
@@ -25,7 +27,8 @@
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "position_side": "BOTH"
+      "position_side": "BOTH",
+      "hedge_position_side": "LONG"
     },
     "SOLUSDT": {
       "volume_threshold": 10000.0,
@@ -34,7 +37,8 @@
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "position_side": "BOTH"
+      "position_side": "BOTH",
+      "hedge_position_side": "LONG"
     },
     "ASTERUSDT": {
       "volume_threshold": 5000.0,
@@ -43,7 +47,8 @@
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "position_side": "BOTH"
+      "position_side": "BOTH",
+      "hedge_position_side": "LONG"
     },
     "XRPUSDT": {
       "volume_threshold": 100.0,
@@ -52,7 +57,8 @@
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "position_side": "BOTH"
+      "position_side": "BOTH",
+      "hedge_position_side": "LONG"
     }
   }
 }

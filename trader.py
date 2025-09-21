@@ -86,10 +86,30 @@ def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
     return qty
 
 async def init_symbol_settings():
-    """Set multi-assets mode, leverage and margin type for each symbol via API."""
+    """Set position mode, multi-assets mode, leverage and margin type for each symbol via API."""
 
     # Fetch exchange info first to get symbol specifications
     await fetch_exchange_info()
+
+    # Check and set hedge mode if enabled
+    hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
+    if hedge_mode:
+        # Check current position mode
+        position_mode_response = make_authenticated_request('GET', f"{config.BASE_URL}/fapi/v1/positionSide/dual")
+        if position_mode_response.status_code == 200:
+            current_hedge = position_mode_response.json().get('dualSidePosition', False)
+            log.info(f"Current Position Mode: {'Hedge' if current_hedge else 'One-way'} Mode")
+
+            if not current_hedge:
+                # Enable hedge mode
+                hedge_response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/positionSide/dual",
+                                                           data={'dualSidePosition': 'true'})
+                if hedge_response.status_code == 200:
+                    log.info("Successfully enabled Hedge Mode")
+                else:
+                    log.error(f"Failed to enable Hedge Mode: {hedge_response.text}")
+        else:
+            log.error(f"Failed to check Position Mode: {position_mode_response.text}")
 
     # Then check current multi-assets mode
     check_response = make_authenticated_request('GET', f"{config.BASE_URL}/fapi/v1/multiAssetsMargin")
@@ -173,7 +193,23 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         log.error(f"Could not calculate valid quantity for {symbol} with {trade_value_usdt} USDT")
         return
 
-    position_side = symbol_config.get('position_side', 'BOTH')
+    # Determine position side based on hedge mode
+    hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
+    if hedge_mode:
+        # In hedge mode, use the hedge_position_side or determine dynamically
+        position_side = symbol_config.get('hedge_position_side', 'LONG')
+
+        # If trading opposite, we might want to use the opposite position side
+        if trade_side_value == 'OPPOSITE':
+            # For liquidation hunting in hedge mode:
+            # If liquidation was LONG (forced sell), we open SHORT position
+            # If liquidation was SHORT (forced buy), we open LONG position
+            if liquidation_side == 'SELL':
+                position_side = 'SHORT'
+            else:
+                position_side = 'LONG'
+    else:
+        position_side = symbol_config.get('position_side', 'BOTH')
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
     await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct)
 
