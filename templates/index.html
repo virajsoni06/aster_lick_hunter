@@ -24,6 +24,65 @@
 
         <!-- Main Dashboard Grid -->
         <div class="dashboard-grid">
+            <!-- Configuration Editor -->
+            <div class="card config-section">
+                <h2>Configuration</h2>
+                <div class="config-tabs">
+                    <button class="tab-btn active" data-tab="global">Global Settings</button>
+                    <button class="tab-btn" data-tab="symbols">Symbol Settings</button>
+                    <button class="tab-btn" data-tab="manage">Manage Symbols</button>
+                </div>
+                <div id="config-global" class="tab-content active">
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label>Volume Window (sec)</label>
+                            <input type="number" id="volume_window_sec" class="config-input">
+                        </div>
+                        <div class="config-item">
+                            <label>Simulate Only</label>
+                            <select id="simulate_only" class="config-input">
+                                <option value="false">False</option>
+                                <option value="true">True</option>
+                            </select>
+                        </div>
+                        <div class="config-item">
+                            <label>Max Total Exposure (USDT)</label>
+                            <input type="number" id="max_total_exposure_usdt" class="config-input" step="0.01">
+                        </div>
+                        <div class="config-item">
+                            <label>Order TTL (sec)</label>
+                            <input type="number" id="order_ttl_seconds" class="config-input">
+                        </div>
+                    </div>
+                </div>
+                <div id="config-symbols" class="tab-content">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                        <select id="symbol-selector" class="config-input" style="flex: 1;">
+                            <!-- Symbol options will be populated here -->
+                        </select>
+                        <button id="remove-symbol-btn" class="btn btn-danger">Remove Symbol</button>
+                    </div>
+                    <div id="symbol-config" class="config-grid">
+                        <!-- Symbol-specific config will be populated here -->
+                    </div>
+                </div>
+                <div id="config-manage" class="tab-content">
+                    <div class="symbol-manager">
+                        <div style="margin-bottom: 20px;">
+                            <button id="fetch-symbols-btn" class="btn btn-primary">Fetch Available Symbols</button>
+                            <span id="symbol-count" style="margin-left: 15px; color: var(--text-secondary);"></span>
+                        </div>
+                        <div class="symbol-search-container">
+                            <input type="text" id="symbol-search" class="config-input" placeholder="Search symbols..." style="width: 100%; margin-bottom: 10px;">
+                        </div>
+                        <div id="available-symbols" class="available-symbols-grid">
+                            <!-- Available symbols will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                <button id="save-config-btn" class="btn btn-success">Save Configuration</button>
+            </div>
+
             <!-- Account Summary -->
             <div class="card account-summary">
                 <h2>Account Summary</h2>
@@ -191,65 +250,6 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
-
-            <!-- Configuration Editor -->
-            <div class="card config-section">
-                <h2>Configuration</h2>
-                <div class="config-tabs">
-                    <button class="tab-btn active" data-tab="global">Global Settings</button>
-                    <button class="tab-btn" data-tab="symbols">Symbol Settings</button>
-                    <button class="tab-btn" data-tab="manage">Manage Symbols</button>
-                </div>
-                <div id="config-global" class="tab-content active">
-                    <div class="config-grid">
-                        <div class="config-item">
-                            <label>Volume Window (sec)</label>
-                            <input type="number" id="volume_window_sec" class="config-input">
-                        </div>
-                        <div class="config-item">
-                            <label>Simulate Only</label>
-                            <select id="simulate_only" class="config-input">
-                                <option value="false">False</option>
-                                <option value="true">True</option>
-                            </select>
-                        </div>
-                        <div class="config-item">
-                            <label>Max Total Exposure (USDT)</label>
-                            <input type="number" id="max_total_exposure_usdt" class="config-input" step="0.01">
-                        </div>
-                        <div class="config-item">
-                            <label>Order TTL (sec)</label>
-                            <input type="number" id="order_ttl_seconds" class="config-input">
-                        </div>
-                    </div>
-                </div>
-                <div id="config-symbols" class="tab-content">
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                        <select id="symbol-selector" class="config-input" style="flex: 1;">
-                            <!-- Symbol options will be populated here -->
-                        </select>
-                        <button id="remove-symbol-btn" class="btn btn-danger">Remove Symbol</button>
-                    </div>
-                    <div id="symbol-config" class="config-grid">
-                        <!-- Symbol-specific config will be populated here -->
-                    </div>
-                </div>
-                <div id="config-manage" class="tab-content">
-                    <div class="symbol-manager">
-                        <div style="margin-bottom: 20px;">
-                            <button id="fetch-symbols-btn" class="btn btn-primary">Fetch Available Symbols</button>
-                            <span id="symbol-count" style="margin-left: 15px; color: var(--text-secondary);"></span>
-                        </div>
-                        <div class="symbol-search-container">
-                            <input type="text" id="symbol-search" class="config-input" placeholder="Search symbols..." style="width: 100%; margin-bottom: 10px;">
-                        </div>
-                        <div id="available-symbols" class="available-symbols-grid">
-                            <!-- Available symbols will be populated here -->
-                        </div>
-                    </div>
-                </div>
-                <button id="save-config-btn" class="btn btn-success">Save Configuration</button>
             </div>
         </div>
 

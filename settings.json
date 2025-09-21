@@ -17,42 +17,30 @@
   },
   "symbols": {
     "BTCUSDT": {
-      "volume_threshold": 1000000.0,
+      "volume_threshold": 100000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "hedge_position_side": "LONG",
-      "max_position_usdt": 100.0,
+      "max_position_usdt": 100,
       "take_profit_enabled": true,
-      "take_profit_pct": 5.0,
+      "take_profit_pct": 5,
       "stop_loss_enabled": true,
-      "stop_loss_pct": 20.0,
-      "use_trailing_stop": true,
-      "trailing_activation_pct": 0.5,
-      "trailing_callback_rate": 0.5,
-      "working_type": "CONTRACT_PRICE",
-      "price_protect": false
+      "stop_loss_pct": 20
     },
     "ETHUSDT": {
-      "volume_threshold": 500000.0,
+      "volume_threshold": 50000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "hedge_position_side": "LONG",
-      "max_position_usdt": 50.0,
+      "max_position_usdt": 50,
       "take_profit_enabled": true,
-      "take_profit_pct": 5.0,
+      "take_profit_pct": 5,
       "stop_loss_enabled": true,
-      "stop_loss_pct": 20.0,
-      "use_trailing_stop": true,
-      "trailing_activation_pct": 0.5,
-      "trailing_callback_rate": 0.5,
-      "working_type": "CONTRACT_PRICE",
-      "price_protect": false
+      "stop_loss_pct": 20
     },
     "SOLUSDT": {
       "volume_threshold": 10000.0,
@@ -87,42 +75,30 @@
       "stop_loss_pct": 20
     },
     "XRPUSDT": {
-      "volume_threshold": 200000.0,
+      "volume_threshold": 20000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.01,
-      "hedge_position_side": "LONG",
-      "max_position_usdt": 20.0,
+      "max_position_usdt": 20,
       "take_profit_enabled": true,
-      "take_profit_pct": 5.0,
+      "take_profit_pct": 5,
       "stop_loss_enabled": true,
-      "stop_loss_pct": 20.0,
-      "use_trailing_stop": true,
-      "trailing_activation_pct": 0.5,
-      "trailing_callback_rate": 0.5,
-      "working_type": "CONTRACT_PRICE",
-      "price_protect": false
+      "stop_loss_pct": 20
     },
     "WLFIUSDT": {
-      "volume_threshold": 100000.0,
+      "volume_threshold": 10000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
-      "trade_value_usdt": 1.0,
+      "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "hedge_position_side": "LONG",
-      "max_position_usdt": 20.0,
+      "max_position_usdt": 20,
       "take_profit_enabled": true,
-      "take_profit_pct": 5.0,
+      "take_profit_pct": 5,
       "stop_loss_enabled": true,
-      "stop_loss_pct": 20.0,
-      "use_trailing_stop": true,
-      "trailing_activation_pct": 0.5,
-      "trailing_callback_rate": 0.5,
-      "working_type": "CONTRACT_PRICE",
-      "price_protect": false
+      "stop_loss_pct": 20
     },
     "HEMIUSDT": {
       "volume_threshold": 100000,
@@ -138,23 +114,17 @@
       "stop_loss_pct": 20
     },
     "PUMPUSDT": {
-      "volume_threshold": 100000.0,
+      "volume_threshold": 10000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
-      "trade_value_usdt": 1.0,
+      "trade_value_usdt": 1,
       "price_offset_pct": 0.1,
-      "hedge_position_side": "LONG",
-      "max_position_usdt": 20.0,
+      "max_position_usdt": 20,
       "take_profit_enabled": true,
-      "take_profit_pct": 5.0,
+      "take_profit_pct": 5,
       "stop_loss_enabled": true,
-      "stop_loss_pct": 20.0,
-      "use_trailing_stop": true,
-      "trailing_activation_pct": 0.5,
-      "trailing_callback_rate": 0.5,
-      "working_type": "CONTRACT_PRICE",
-      "price_protect": false
+      "stop_loss_pct": 20
     }
   }
 }
