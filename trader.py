@@ -42,7 +42,8 @@ async def fetch_exchange_info():
                         'minQty': float(lot_size_filter['minQty']),
                         'maxQty': float(lot_size_filter['maxQty']),
                         'stepSize': float(lot_size_filter['stepSize']),
-                        'quantityPrecision': symbol_data.get('quantityPrecision', 2)
+                        'quantityPrecision': symbol_data.get('quantityPrecision', 2),
+                        'pricePrecision': symbol_data.get('pricePrecision', 2)
                     }
                     log.debug(f"Cached specs for {symbol}: {symbol_specs[symbol]}")
 
@@ -51,6 +52,15 @@ async def fetch_exchange_info():
             log.error(f"Failed to fetch exchange info: {response.text}")
     except Exception as e:
         log.error(f"Error fetching exchange info: {e}")
+
+def format_price(symbol, price):
+    """Format price with correct precision for the symbol."""
+    if symbol not in symbol_specs:
+        # Fallback to 6 decimals if specs not found
+        return f"{price:.6f}"
+
+    precision = symbol_specs[symbol].get('pricePrecision', 2)
+    return f"{price:.{precision}f}"
 
 def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
     """Calculate the quantity to trade based on USDT value (position size) and current price."""
@@ -275,7 +285,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
         'type': 'LIMIT',
         'timeInForce': 'GTC',
         'quantity': str(qty),
-        'price': f"{entry_price:.6f}",
+        'price': format_price(symbol, entry_price),
         'positionSide': position_side,
         'newOrderRespType': 'RESULT'
     }
@@ -304,7 +314,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                 'symbol': symbol,
                 'side': tp_side,
                 'type': 'TAKE_PROFIT_MARKET',
-                'stopPrice': f"{tp_price:.6f}",
+                'stopPrice': format_price(symbol, tp_price),
                 'closePosition': 'false',
                 'quantity': str(qty),
                 'positionSide': position_side,
@@ -334,7 +344,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                     'type': 'TRAILING_STOP_MARKET',
                     'quantity': str(qty),
                     'callbackRate': str(callback_rate),
-                    'activationPrice': f"{entry_price:.6f}",
+                    'activationPrice': format_price(symbol, entry_price),
                     'positionSide': position_side,
                     'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE')
                 }
@@ -354,7 +364,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                     'symbol': symbol,
                     'side': sl_side,
                     'type': 'STOP_MARKET',
-                    'stopPrice': f"{sl_price:.6f}",
+                    'stopPrice': format_price(symbol, sl_price),
                     'closePosition': 'false',
                     'quantity': str(qty),
                     'positionSide': position_side,
