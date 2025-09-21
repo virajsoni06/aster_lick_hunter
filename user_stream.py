@@ -163,7 +163,18 @@ class UserDataStream:
         filled_qty = float(order_data.get('z', 0))
         position_side = order_data.get('ps', 'BOTH')
 
+        # Extract trade-specific fields for fills
+        trade_id = order_data.get('t', 0)  # Trade ID
+        avg_price = float(order_data.get('ap', 0))  # Average Price
+        realized_pnl = float(order_data.get('rp', 0))  # Realized Profit
+        commission_amount = float(order_data.get('n', 0)) if 'n' in order_data else None  # Commission
+        commission_asset = order_data.get('N', 'USDT')  # Commission Asset
+
         logger.info(f"Order update - {order_id}: {symbol} {side} {status} (filled: {filled_qty}/{quantity})")
+
+        # Log trade details if this is a fill
+        if trade_id and trade_id != 0:
+            logger.info(f"Trade executed - ID: {trade_id}, Avg Price: {avg_price}, Realized PnL: {realized_pnl}, Commission: {commission_amount} {commission_asset}")
 
         # Update order manager
         if self.order_manager:
@@ -171,14 +182,70 @@ class UserDataStream:
 
         # Update database
         if self.db_conn:
-            from db_updated import insert_order_status, update_order_filled, update_order_canceled
+            # First, check if we're using the new db.py or db_updated.py
+            try:
+                from db import update_trade_on_fill
+                use_new_db = True
+            except ImportError:
+                from db_updated import insert_order_status, update_order_filled, update_order_canceled
+                use_new_db = False
 
-            if status == 'FILLED':
-                update_order_filled(self.db_conn, order_id, filled_qty)
-            elif status == 'CANCELED':
-                update_order_canceled(self.db_conn, order_id)
+            if use_new_db:
+                # Use the new update_trade_on_fill function
+                if status in ['FILLED', 'PARTIALLY_FILLED']:
+                    # Update trade with fill information
+                    rows_updated = update_trade_on_fill(
+                        self.db_conn,
+                        order_id=order_id,
+                        trade_id=trade_id,
+                        status=status,
+                        filled_qty=filled_qty,
+                        avg_price=avg_price if avg_price > 0 else price,
+                        realized_pnl=realized_pnl,
+                        commission=-abs(commission_amount) if commission_amount else None  # Store as negative
+                    )
+
+                    if rows_updated == 0:
+                        logger.warning(f"No trade record found for order {order_id}, may need to create one")
+                        # If no existing trade, we might need to insert it
+                        # This can happen if the order was placed before our tracking started
+                        from db import insert_trade
+                        insert_trade(
+                            self.db_conn,
+                            symbol=symbol,
+                            order_id=order_id,
+                            side=side,
+                            qty=quantity,
+                            price=avg_price if avg_price > 0 else price,
+                            status=status,
+                            order_type=order_type
+                        )
+                        # Then update with fill details
+                        update_trade_on_fill(
+                            self.db_conn,
+                            order_id=order_id,
+                            trade_id=trade_id,
+                            status=status,
+                            filled_qty=filled_qty,
+                            avg_price=avg_price if avg_price > 0 else price,
+                            realized_pnl=realized_pnl,
+                            commission=-abs(commission_amount) if commission_amount else None
+                        )
+
+                elif status == 'CANCELED':
+                    # Just update status to canceled
+                    cursor = self.db_conn.cursor()
+                    cursor.execute('UPDATE trades SET status = ? WHERE order_id = ?', ('CANCELED', order_id))
+                    self.db_conn.commit()
+
             else:
-                insert_order_status(self.db_conn, order_id, symbol, side, quantity, price, position_side, status)
+                # Fallback to old db_updated methods
+                if status == 'FILLED':
+                    update_order_filled(self.db_conn, order_id, filled_qty)
+                elif status == 'CANCELED':
+                    update_order_canceled(self.db_conn, order_id)
+                else:
+                    insert_order_status(self.db_conn, order_id, symbol, side, quantity, price, position_side, status)
 
         # Update position manager when order fills
         if status == 'FILLED' and self.position_manager:

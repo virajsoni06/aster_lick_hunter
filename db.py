@@ -33,7 +33,12 @@ def init_db(db_path):
             status TEXT NOT NULL,
             order_type TEXT,  -- LIMIT, TAKE_PROFIT_MARKET, STOP_MARKET, etc.
             parent_order_id TEXT,  -- Links TP/SL orders to main order
-            response TEXT  -- JSON response from API
+            response TEXT,  -- JSON response from API
+            exchange_trade_id TEXT,  -- Trade ID from exchange when order fills
+            realized_pnl REAL,  -- Realized PnL from ORDER_TRADE_UPDATE
+            commission REAL,  -- Commission from ORDER_TRADE_UPDATE
+            filled_qty REAL,  -- Actual filled quantity
+            avg_price REAL  -- Average fill price
         )
     ''')
 
@@ -50,10 +55,27 @@ def init_db(db_path):
         )
     ''')
 
+    # Add new columns to existing tables (migration for existing databases)
+    # Check if columns exist before adding them
+    cursor.execute("PRAGMA table_info(trades)")
+    columns = [col[1] for col in cursor.fetchall()]
+
+    if 'exchange_trade_id' not in columns:
+        cursor.execute('ALTER TABLE trades ADD COLUMN exchange_trade_id TEXT')
+    if 'realized_pnl' not in columns:
+        cursor.execute('ALTER TABLE trades ADD COLUMN realized_pnl REAL')
+    if 'commission' not in columns:
+        cursor.execute('ALTER TABLE trades ADD COLUMN commission REAL')
+    if 'filled_qty' not in columns:
+        cursor.execute('ALTER TABLE trades ADD COLUMN filled_qty REAL')
+    if 'avg_price' not in columns:
+        cursor.execute('ALTER TABLE trades ADD COLUMN avg_price REAL')
+
     # Create indexes for faster queries
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_liquidations_symbol_timestamp ON liquidations (symbol, timestamp);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol_timestamp ON trades (symbol, timestamp);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_parent_order ON trades (parent_order_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_exchange_trade_id ON trades (exchange_trade_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_relationships_main ON order_relationships (main_order_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_relationships_symbol ON order_relationships (symbol);')
 
@@ -98,6 +120,59 @@ def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None
                    (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id))
     conn.commit()
     return cursor.lastrowid
+
+def update_trade_on_fill(conn, order_id, trade_id, status, filled_qty, avg_price, realized_pnl=None, commission=None):
+    """
+    Update trade record when order fills.
+
+    Args:
+        conn: Database connection
+        order_id: Order ID from the exchange
+        trade_id: Trade ID from ORDER_TRADE_UPDATE event (field 't')
+        status: New status (e.g., 'FILLED', 'PARTIALLY_FILLED')
+        filled_qty: Cumulative filled quantity
+        avg_price: Average fill price
+        realized_pnl: Realized PnL from the trade (field 'rp')
+        commission: Commission amount (field 'n')
+    """
+    cursor = conn.cursor()
+
+    # Build update query dynamically based on provided fields
+    update_fields = ['status = ?', 'filled_qty = ?', 'avg_price = ?']
+    params = [status, filled_qty, avg_price]
+
+    # Only update trade_id if it's provided and not 0
+    if trade_id and str(trade_id) != '0':
+        # Check if we already have a trade_id (for partial fills)
+        cursor.execute('SELECT exchange_trade_id FROM trades WHERE order_id = ?', (order_id,))
+        result = cursor.fetchone()
+
+        if result and result[0]:
+            # Append new trade_id if we already have one (comma-separated for partials)
+            existing_ids = result[0]
+            if str(trade_id) not in existing_ids:
+                update_fields.append('exchange_trade_id = ?')
+                params.append(f"{existing_ids},{trade_id}")
+        else:
+            update_fields.append('exchange_trade_id = ?')
+            params.append(str(trade_id))
+
+    if realized_pnl is not None:
+        update_fields.append('realized_pnl = ?')
+        params.append(realized_pnl)
+
+    if commission is not None:
+        update_fields.append('commission = ?')
+        params.append(commission)
+
+    # Add order_id to params for WHERE clause
+    params.append(order_id)
+
+    query = f"UPDATE trades SET {', '.join(update_fields)} WHERE order_id = ?"
+    cursor.execute(query, params)
+    conn.commit()
+
+    return cursor.rowcount
 
 def insert_order_relationship(conn, main_order_id, symbol, position_side='BOTH', tp_order_id=None, sl_order_id=None):
     """Insert or update order relationship tracking."""
