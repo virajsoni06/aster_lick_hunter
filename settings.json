@@ -25,7 +25,15 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 100.0
+      "max_position_usdt": 100.0,
+      "take_profit_enabled": true,
+      "take_profit_pct": 1.0,
+      "stop_loss_enabled": false,
+      "stop_loss_pct": 20.0,
+      "use_trailing_stop": false,
+      "trailing_callback_rate": 1.0,
+      "working_type": "CONTRACT_PRICE",
+      "price_protect": false
     },
     "ETHUSDT": {
       "volume_threshold": 500000.0,
@@ -36,7 +44,15 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 50.0
+      "max_position_usdt": 50.0,
+      "take_profit_enabled": true,
+      "take_profit_pct": 2.5,
+      "stop_loss_enabled": false,
+      "stop_loss_pct": 20.0,
+      "use_trailing_stop": false,
+      "trailing_callback_rate": 1.0,
+      "working_type": "CONTRACT_PRICE",
+      "price_protect": false
     },
     "SOLUSDT": {
       "volume_threshold": 10000.0,
@@ -47,7 +63,15 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 30.0
+      "max_position_usdt": 30.0,
+      "take_profit_enabled": true,
+      "take_profit_pct": 3.0,
+      "stop_loss_enabled": false,
+      "stop_loss_pct": 20.0,
+      "use_trailing_stop": false,
+      "trailing_callback_rate": 1.0,
+      "working_type": "CONTRACT_PRICE",
+      "price_protect": false
     },
     "ASTERUSDT": {
       "volume_threshold": 50.0,
@@ -58,7 +82,15 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 20.0
+      "max_position_usdt": 20.0,
+      "take_profit_enabled": true,
+      "take_profit_pct": 5.0,
+      "stop_loss_enabled": false,
+      "stop_loss_pct": 20.0,
+      "use_trailing_stop": false,
+      "trailing_callback_rate": 1.5,
+      "working_type": "CONTRACT_PRICE",
+      "price_protect": false
     },
     "XRPUSDT": {
       "volume_threshold": 100.0,
@@ -69,7 +101,15 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 20.0
+      "max_position_usdt": 20.0,
+      "take_profit_enabled": true,
+      "take_profit_pct": 3.0,
+      "stop_loss_enabled": false,
+      "stop_loss_pct": 20.0,
+      "use_trailing_stop": false,
+      "trailing_callback_rate": 1.0,
+      "working_type": "CONTRACT_PRICE",
+      "price_protect": false
     }
   }
 }

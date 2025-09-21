@@ -20,7 +20,7 @@ def init_db(db_path):
         )
     ''')
 
-    # Create trades table
+    # Create trades table with enhanced fields for TP/SL tracking
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +31,8 @@ def init_db(db_path):
             qty REAL NOT NULL,
             price REAL NOT NULL,
             status TEXT NOT NULL,
+            order_type TEXT,  -- LIMIT, TAKE_PROFIT_MARKET, STOP_MARKET, etc.
+            parent_order_id TEXT,  -- Links TP/SL orders to main order
             response TEXT  -- JSON response from API
         )
     ''')
@@ -38,6 +40,7 @@ def init_db(db_path):
     # Create indexes for faster queries
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_liquidations_symbol_timestamp ON liquidations (symbol, timestamp);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol_timestamp ON trades (symbol, timestamp);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_parent_order ON trades (parent_order_id);')
 
     conn.commit()
     return conn
@@ -72,12 +75,12 @@ def get_usdt_volume_in_window(conn, symbol, window_sec):
     result = cursor.fetchone()[0]
     return result or 0.0
 
-def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None):
-    """Insert a trade into the database."""
+def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None, order_type=None, parent_order_id=None):
+    """Insert a trade into the database with optional order type and parent order tracking."""
     timestamp = int(time.time() * 1000)
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO trades (timestamp, symbol, order_id, side, qty, price, status, response) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                   (timestamp, symbol, order_id, side, qty, price, status, response))
+    cursor.execute('INSERT INTO trades (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id))
     conn.commit()
     return cursor.lastrowid
 
