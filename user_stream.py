@@ -1,0 +1,346 @@
+"""
+WebSocket user data stream for real-time order and position updates.
+"""
+
+import asyncio
+import websockets
+import json
+import time
+import logging
+from typing import Optional, Callable
+from auth import make_authenticated_request
+from config import config
+
+logger = logging.getLogger(__name__)
+
+
+class UserDataStream:
+    """
+    Manages WebSocket connection for user data stream.
+    Receives real-time updates for orders, positions, and account changes.
+    """
+
+    def __init__(self, order_manager=None, position_manager=None, db_conn=None):
+        """
+        Initialize user data stream.
+
+        Args:
+            order_manager: OrderManager instance for order updates
+            position_manager: PositionManager instance for position updates
+            db_conn: Database connection for persistence
+        """
+        self.order_manager = order_manager
+        self.position_manager = position_manager
+        self.db_conn = db_conn
+
+        self.ws_url = "wss://fstream.asterdex.com/ws/"
+        self.listen_key = None
+        self.ws = None
+        self.running = False
+        self.keepalive_task = None
+
+        logger.info("User data stream initialized")
+
+    async def create_listen_key(self) -> Optional[str]:
+        """
+        Create a listen key for user data stream.
+
+        Returns:
+            Listen key string or None
+        """
+        try:
+            response = make_authenticated_request(
+                'POST',
+                f"{config.BASE_URL}/fapi/v1/listenKey"
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                listen_key = data.get('listenKey')
+                logger.info(f"Created listen key: {listen_key[:8]}...")
+                return listen_key
+            else:
+                logger.error(f"Failed to create listen key: {response.text}")
+        except Exception as e:
+            logger.error(f"Error creating listen key: {e}")
+
+        return None
+
+    async def keepalive_listen_key(self) -> bool:
+        """
+        Keepalive the listen key to prevent expiration.
+
+        Returns:
+            True if successful
+        """
+        if not self.listen_key:
+            return False
+
+        try:
+            response = make_authenticated_request(
+                'PUT',
+                f"{config.BASE_URL}/fapi/v1/listenKey"
+            )
+
+            if response.status_code == 200:
+                logger.debug("Listen key keepalive successful")
+                return True
+            else:
+                logger.error(f"Listen key keepalive failed: {response.text}")
+        except Exception as e:
+            logger.error(f"Error in listen key keepalive: {e}")
+
+        return False
+
+    async def close_listen_key(self) -> None:
+        """Close the listen key."""
+        if not self.listen_key:
+            return
+
+        try:
+            response = make_authenticated_request(
+                'DELETE',
+                f"{config.BASE_URL}/fapi/v1/listenKey"
+            )
+
+            if response.status_code == 200:
+                logger.info("Listen key closed")
+            else:
+                logger.error(f"Failed to close listen key: {response.text}")
+        except Exception as e:
+            logger.error(f"Error closing listen key: {e}")
+
+    async def keepalive_loop(self) -> None:
+        """
+        Keepalive loop to maintain listen key.
+        Sends keepalive every 30 minutes.
+        """
+        while self.running:
+            try:
+                await asyncio.sleep(1800)  # 30 minutes
+                if self.running:
+                    await self.keepalive_listen_key()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in keepalive loop: {e}")
+
+    async def handle_account_update(self, data: dict) -> None:
+        """
+        Handle account update event.
+
+        Args:
+            data: Account update data
+        """
+        event_time = data.get('E', 0)
+        balances = data.get('a', {}).get('B', [])
+
+        for balance in balances:
+            asset = balance.get('a')
+            wallet_balance = float(balance.get('wb', 0))
+            cross_wallet = float(balance.get('cw', 0))
+
+            logger.info(f"Balance update - {asset}: wallet={wallet_balance}, cross={cross_wallet}")
+
+    async def handle_order_update(self, data: dict) -> None:
+        """
+        Handle order update event.
+
+        Args:
+            data: Order update data
+        """
+        order_data = data.get('o', {})
+
+        symbol = order_data.get('s')
+        order_id = str(order_data.get('i'))
+        side = order_data.get('S')
+        order_type = order_data.get('o')
+        status = order_data.get('X')
+        price = float(order_data.get('p', 0))
+        quantity = float(order_data.get('q', 0))
+        filled_qty = float(order_data.get('z', 0))
+        position_side = order_data.get('ps', 'BOTH')
+
+        logger.info(f"Order update - {order_id}: {symbol} {side} {status} (filled: {filled_qty}/{quantity})")
+
+        # Update order manager
+        if self.order_manager:
+            self.order_manager.update_order_status(order_id, status, filled_qty)
+
+        # Update database
+        if self.db_conn:
+            from db_updated import insert_order_status, update_order_filled, update_order_canceled
+
+            if status == 'FILLED':
+                update_order_filled(self.db_conn, order_id, filled_qty)
+            elif status == 'CANCELED':
+                update_order_canceled(self.db_conn, order_id)
+            else:
+                insert_order_status(self.db_conn, order_id, symbol, side, quantity, price, position_side, status)
+
+        # Update position manager when order fills
+        if status == 'FILLED' and self.position_manager:
+            # Remove pending exposure
+            self.position_manager.remove_pending_exposure(symbol, filled_qty * price)
+
+            # Update actual position
+            position_side_mapped = 'LONG' if (side == 'BUY' and position_side != 'SHORT') or position_side == 'LONG' else 'SHORT'
+            self.position_manager.update_position(symbol, position_side_mapped, filled_qty, price)
+
+    async def handle_position_update(self, data: dict) -> None:
+        """
+        Handle position update event from ACCOUNT_UPDATE.
+
+        Args:
+            data: Position update data
+        """
+        positions = data.get('a', {}).get('P', [])
+
+        for pos_data in positions:
+            symbol = pos_data.get('s')
+            position_amount = float(pos_data.get('pa', 0))
+            entry_price = float(pos_data.get('ep', 0))
+            unrealized_pnl = float(pos_data.get('up', 0))
+            position_side = pos_data.get('ps', 'BOTH')
+
+            if position_amount != 0:
+                logger.info(f"Position update - {symbol} {position_side}: {position_amount}@{entry_price}, PnL={unrealized_pnl}")
+
+                # Update position manager
+                if self.position_manager:
+                    side = 'LONG' if position_amount > 0 else 'SHORT'
+                    self.position_manager.update_position(symbol, side, abs(position_amount), entry_price)
+
+                # Update database
+                if self.db_conn:
+                    from db_updated import upsert_position
+                    side = 'LONG' if position_amount > 0 else 'SHORT'
+                    upsert_position(self.db_conn, symbol, side, abs(position_amount), entry_price, entry_price)
+            else:
+                # Position closed
+                if self.position_manager:
+                    self.position_manager.close_position(symbol)
+
+                if self.db_conn:
+                    from db_updated import close_position
+                    close_position(self.db_conn, symbol)
+
+    async def handle_message(self, message: str) -> None:
+        """
+        Handle incoming WebSocket message.
+
+        Args:
+            message: Raw message string
+        """
+        try:
+            data = json.loads(message)
+            event_type = data.get('e')
+
+            if event_type == 'ACCOUNT_UPDATE':
+                await self.handle_account_update(data)
+                await self.handle_position_update(data)
+
+            elif event_type == 'ORDER_TRADE_UPDATE':
+                await self.handle_order_update(data)
+
+            elif event_type == 'listenKeyExpired':
+                logger.warning("Listen key expired, reconnecting...")
+                await self.reconnect()
+
+            elif event_type == 'MARGIN_CALL':
+                logger.error(f"MARGIN CALL received: {data}")
+
+            else:
+                logger.debug(f"Unhandled event type: {event_type}")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to decode message: {e}")
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
+
+    async def connect(self) -> None:
+        """Connect to user data stream."""
+        # Create listen key
+        self.listen_key = await self.create_listen_key()
+        if not self.listen_key:
+            logger.error("Failed to create listen key")
+            return
+
+        # Connect to WebSocket
+        ws_url = f"{self.ws_url}{self.listen_key}"
+
+        try:
+            self.ws = await websockets.connect(ws_url)
+            logger.info("Connected to user data stream")
+
+            # Start keepalive task
+            self.keepalive_task = asyncio.create_task(self.keepalive_loop())
+
+            # Listen for messages
+            async for message in self.ws:
+                if not self.running:
+                    break
+                await self.handle_message(message)
+
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning("User data stream connection closed")
+            if self.running:
+                await self.reconnect()
+
+        except Exception as e:
+            logger.error(f"Error in user data stream: {e}")
+            if self.running:
+                await asyncio.sleep(5)
+                await self.reconnect()
+
+    async def reconnect(self) -> None:
+        """Reconnect to user data stream."""
+        logger.info("Reconnecting user data stream...")
+
+        # Clean up existing connection
+        if self.ws:
+            await self.ws.close()
+            self.ws = None
+
+        if self.keepalive_task:
+            self.keepalive_task.cancel()
+            self.keepalive_task = None
+
+        # Close old listen key
+        if self.listen_key:
+            await self.close_listen_key()
+            self.listen_key = None
+
+        # Wait before reconnecting
+        await asyncio.sleep(5)
+
+        # Reconnect
+        if self.running:
+            await self.connect()
+
+    async def start(self) -> None:
+        """Start the user data stream."""
+        self.running = True
+        await self.connect()
+
+    async def stop(self) -> None:
+        """Stop the user data stream."""
+        logger.info("Stopping user data stream...")
+        self.running = False
+
+        # Cancel keepalive
+        if self.keepalive_task:
+            self.keepalive_task.cancel()
+            self.keepalive_task = None
+
+        # Close WebSocket
+        if self.ws:
+            await self.ws.close()
+            self.ws = None
+
+        # Close listen key
+        if self.listen_key:
+            await self.close_listen_key()
+            self.listen_key = None
+
+        logger.info("User data stream stopped")
