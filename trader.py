@@ -331,6 +331,20 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
             if symbol_config.get('use_trailing_stop', False):
                 # Trailing stop
                 callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
+                activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
+
+                # Calculate activation price (e.g., 0.5% in profit)
+                if hedge_mode and position_side != 'BOTH':
+                    if position_side == 'LONG':
+                        activation_price = entry_price * (1 + activation_pct / 100.0)
+                    else:  # SHORT
+                        activation_price = entry_price * (1 - activation_pct / 100.0)
+                else:
+                    # One-way mode
+                    if side == 'BUY':
+                        activation_price = entry_price * (1 + activation_pct / 100.0)
+                    else:
+                        activation_price = entry_price * (1 - activation_pct / 100.0)
 
                 # Determine SL side (opposite of entry for closing)
                 if hedge_mode and position_side != 'BOTH':
@@ -344,12 +358,12 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                     'type': 'TRAILING_STOP_MARKET',
                     'quantity': str(qty),
                     'callbackRate': str(callback_rate),
-                    'activationPrice': format_price(symbol, entry_price),
+                    'activationPrice': format_price(symbol, activation_price),
                     'positionSide': position_side,
                     'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE')
                 }
                 orders.append(sl_order)
-                log.info(f"Adding trailing stop with {callback_rate}% callback")
+                log.info(f"Adding trailing stop with {activation_pct}% activation, {callback_rate}% callback")
             else:
                 # Fixed stop loss
                 sl_price = calculate_sl_price(entry_price, side, sl_pct, actual_position_side)
