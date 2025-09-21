@@ -34,11 +34,14 @@ class PositionManager:
     def __init__(self, max_position_usdt_per_symbol: Dict[str, float],
                  max_total_exposure_usdt: float = 10000.0):
         """
-        Initialize position manager.
+        Initialize position manager with COLLATERAL-BASED limits.
 
         Args:
-            max_position_usdt_per_symbol: Maximum position size per symbol in USDT
-            max_total_exposure_usdt: Maximum total exposure across all positions
+            max_position_usdt_per_symbol: Maximum COLLATERAL/MARGIN per symbol in USDT
+            max_total_exposure_usdt: Maximum total COLLATERAL/MARGIN across all positions
+
+        Note: These are COLLATERAL limits, not position size limits.
+        With 10x leverage, a $20 collateral limit allows a $200 position.
         """
         self.max_position_usdt_per_symbol = max_position_usdt_per_symbol
         self.max_total_exposure_usdt = max_total_exposure_usdt
@@ -52,83 +55,96 @@ class PositionManager:
         # Thread safety
         self.lock = Lock()
 
-        logger.info(f"Position manager initialized with total limit={max_total_exposure_usdt} USDT")
+        logger.info(f"Position manager initialized with total collateral limit={max_total_exposure_usdt} USDT")
 
-    def can_open_position(self, symbol: str, value_usdt: float,
+    def can_open_position(self, symbol: str, value_usdt: float, leverage: int = 1,
                          include_pending: bool = True) -> tuple[bool, str]:
         """
-        Check if a new position can be opened.
+        Check if a new position can be opened based on COLLATERAL/MARGIN limits.
 
         Args:
             symbol: Trading symbol
-            value_usdt: Position value in USDT
+            value_usdt: Position value in USDT (notional)
+            leverage: Leverage for the position
             include_pending: Include pending orders in calculation
 
         Returns:
             Tuple of (can_open, reason_if_not)
         """
         with self.lock:
-            # Get current position value for symbol
-            current_position_value = 0.0
+            # Calculate margin/collateral required for new position
+            new_margin_required = value_usdt / leverage if leverage > 0 else value_usdt
+
+            # Get current margin used for symbol
+            current_margin_used = 0.0
             if symbol in self.positions:
-                current_position_value = abs(self.positions[symbol].position_value_usdt)
+                current_margin_used = self.positions[symbol].margin_used
 
-            # Include pending exposure if requested
-            pending_value = 0.0
+            # Include pending margin if requested
+            pending_margin = 0.0
             if include_pending and symbol in self.pending_exposure:
-                pending_value = self.pending_exposure[symbol]
+                # pending_exposure now stores margin, not position value
+                pending_margin = self.pending_exposure[symbol]
 
-            # Calculate total for this symbol
-            symbol_total = current_position_value + pending_value + value_usdt
+            # Calculate total margin for this symbol
+            symbol_margin_total = current_margin_used + pending_margin + new_margin_required
 
-            # Check symbol limit
-            symbol_limit = self.max_position_usdt_per_symbol.get(symbol, float('inf'))
-            if symbol_total > symbol_limit:
-                reason = f"Would exceed {symbol} limit: {symbol_total:.2f} > {symbol_limit:.2f} USDT"
+            # Check symbol margin limit (max_position_usdt is now max COLLATERAL)
+            symbol_margin_limit = self.max_position_usdt_per_symbol.get(symbol, float('inf'))
+            if symbol_margin_total > symbol_margin_limit:
+                reason = f"Would exceed {symbol} collateral limit: {symbol_margin_total:.2f} > {symbol_margin_limit:.2f} USDT"
                 logger.warning(reason)
                 return False, reason
 
-            # Calculate total exposure
-            total_exposure = sum(abs(p.position_value_usdt) for p in self.positions.values())
-            total_pending = sum(self.pending_exposure.values()) if include_pending else 0
-            new_total = total_exposure + total_pending + value_usdt
+            # Calculate total margin/collateral across all positions
+            total_margin_used = sum(p.margin_used for p in self.positions.values())
+            total_pending_margin = sum(self.pending_exposure.values()) if include_pending else 0
+            new_total_margin = total_margin_used + total_pending_margin + new_margin_required
 
-            # Check total limit
-            if new_total > self.max_total_exposure_usdt:
-                reason = f"Would exceed total exposure limit: {new_total:.2f} > {self.max_total_exposure_usdt:.2f} USDT"
+            # Check total margin limit (max_total_exposure_usdt is now max total COLLATERAL)
+            if new_total_margin > self.max_total_exposure_usdt:
+                reason = f"Would exceed total collateral limit: {new_total_margin:.2f} > {self.max_total_exposure_usdt:.2f} USDT"
                 logger.warning(reason)
                 return False, reason
 
             return True, ""
 
-    def add_pending_exposure(self, symbol: str, value_usdt: float) -> None:
+    def add_pending_exposure(self, symbol: str, value_usdt: float, leverage: int = 1) -> None:
         """
-        Add pending exposure for an order being placed.
+        Add pending margin/collateral for an order being placed.
 
         Args:
             symbol: Trading symbol
-            value_usdt: Pending value in USDT
+            value_usdt: Position value in USDT (notional)
+            leverage: Leverage for the position
         """
         with self.lock:
+            # Calculate margin required
+            margin_required = value_usdt / leverage if leverage > 0 else value_usdt
+
             if symbol not in self.pending_exposure:
                 self.pending_exposure[symbol] = 0.0
-            self.pending_exposure[symbol] += value_usdt
-            logger.debug(f"Added pending exposure for {symbol}: {value_usdt:.2f} USDT")
+            self.pending_exposure[symbol] += margin_required
+            logger.debug(f"Added pending collateral for {symbol}: {margin_required:.2f} USDT (position: {value_usdt:.2f} @ {leverage}x)")
 
-    def remove_pending_exposure(self, symbol: str, value_usdt: float) -> None:
+    def remove_pending_exposure(self, symbol: str, value_usdt: float, leverage: int = 1) -> None:
         """
-        Remove pending exposure when order is filled or canceled.
+        Remove pending margin/collateral when order is filled or canceled.
 
         Args:
             symbol: Trading symbol
-            value_usdt: Value to remove in USDT
+            value_usdt: Position value in USDT (notional)
+            leverage: Leverage for the position
         """
         with self.lock:
+            # Calculate margin that was reserved
+            margin_reserved = value_usdt / leverage if leverage > 0 else value_usdt
+
             if symbol in self.pending_exposure:
-                self.pending_exposure[symbol] = max(0, self.pending_exposure[symbol] - value_usdt)
+                self.pending_exposure[symbol] = max(0, self.pending_exposure[symbol] - margin_reserved)
                 if self.pending_exposure[symbol] == 0:
                     del self.pending_exposure[symbol]
-                logger.debug(f"Removed pending exposure for {symbol}: {value_usdt:.2f} USDT")
+                logger.debug(f"Removed pending collateral for {symbol}: {margin_reserved:.2f} USDT")
 
     def update_position(self, symbol: str, side: str, quantity: float,
                        price: float, leverage: int = 1) -> None:
@@ -278,13 +294,14 @@ class PositionManager:
                 'total_positions': len(self.positions),
                 'positions_by_symbol': list(self.positions.keys()),
                 'positions_by_side': positions_by_side,
-                'total_exposure_usdt': self.get_total_exposure(),
+                'total_position_value_usdt': self.get_total_exposure(),
                 'total_unrealized_pnl': self.get_total_unrealized_pnl(),
-                'total_margin_used': total_margin,
-                'exposure_limit_usdt': self.max_total_exposure_usdt,
-                'exposure_usage_pct': (self.get_total_exposure() / self.max_total_exposure_usdt * 100)
+                'total_collateral_used': total_margin,
+                'collateral_limit_usdt': self.max_total_exposure_usdt,
+                'collateral_usage_pct': (total_margin / self.max_total_exposure_usdt * 100)
                                      if self.max_total_exposure_usdt > 0 else 0,
-                'pending_exposure': dict(self.pending_exposure)
+                'pending_collateral': dict(self.pending_exposure),
+                'per_symbol_collateral_limits': self.max_position_usdt_per_symbol
             }
 
     def check_risk_limits(self) -> List[str]:

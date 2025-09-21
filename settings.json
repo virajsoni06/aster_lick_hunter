@@ -9,8 +9,8 @@
     "set_leverage": true,
     "use_usdt_volume": true,
     "order_ttl_seconds": 30,
-    "max_open_orders_per_symbol": 1,
-    "max_total_exposure_usdt": 10000.0,
+    "max_open_orders_per_symbol": 3,
+    "max_total_exposure_usdt": 200.0,
     "rate_limit_buffer_pct": 0.4,
     "order_status_check_interval": 5,
     "time_in_force": "GTC"
@@ -25,7 +25,7 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 1000.0
+      "max_position_usdt": 100.0
     },
     "ETHUSDT": {
       "volume_threshold": 500000.0,
@@ -36,7 +36,7 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 500.0
+      "max_position_usdt": 50.0
     },
     "SOLUSDT": {
       "volume_threshold": 10000.0,
@@ -47,10 +47,10 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 300.0
+      "max_position_usdt": 30.0
     },
     "ASTERUSDT": {
-      "volume_threshold": 50000.0,
+      "volume_threshold": 50.0,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -58,7 +58,7 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 200.0
+      "max_position_usdt": 20.0
     },
     "XRPUSDT": {
       "volume_threshold": 100.0,
@@ -69,7 +69,7 @@
       "price_offset_pct": 0.1,
       "position_side": "BOTH",
       "hedge_position_side": "LONG",
-      "max_position_usdt": 200.0
+      "max_position_usdt": 20.0
     }
   }
 }

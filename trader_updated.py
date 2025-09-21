@@ -243,10 +243,11 @@ async def evaluate_trade(symbol, liquidation_side, liquidation_qty, price):
 
     # Calculate quantity from USDT value
     trade_value_usdt = symbol_config.get('trade_value_usdt', 100)
+    leverage = symbol_config.get('leverage', 10)
 
-    # Check position limits
+    # Check position limits (now based on collateral/margin)
     if position_manager:
-        can_open, reason = position_manager.can_open_position(symbol, trade_value_usdt)
+        can_open, reason = position_manager.can_open_position(symbol, trade_value_usdt, leverage)
         if not can_open:
             log.warning(f"Cannot open position for {symbol}: {reason}")
             return
@@ -271,16 +272,16 @@ async def evaluate_trade(symbol, liquidation_side, liquidation_qty, price):
 
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
 
-    # Add pending exposure before placing order
+    # Add pending exposure before placing order (collateral-based)
     if position_manager:
-        position_manager.add_pending_exposure(symbol, trade_value_usdt)
+        position_manager.add_pending_exposure(symbol, trade_value_usdt, leverage)
 
     # Place the order
-    success = await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct)
+    success = await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, leverage)
 
     # Remove pending exposure if order failed
     if not success and position_manager:
-        position_manager.remove_pending_exposure(symbol, trade_value_usdt)
+        position_manager.remove_pending_exposure(symbol, trade_value_usdt, leverage)
 
 def get_limit_price(price, side, offset_pct):
     """Calculate limit price for maker order with offset."""
@@ -290,7 +291,7 @@ def get_limit_price(price, side, offset_pct):
     else:
         return price * (1 + (offset_pct / 100.0))  # Ask higher for sell
 
-async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1):
+async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1, leverage=10):
     """Place a maker order via API with rate limiting and order management."""
 
     # Check rate limits
@@ -347,7 +348,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
 
             # Update position (pending)
             if position_manager and status == 'NEW':
-                position_manager.remove_pending_exposure(symbol, qty * price)
+                position_manager.remove_pending_exposure(symbol, qty * price, leverage)
                 # Will update actual position when order fills
 
             insert_trade(conn, symbol, str(order_id), side, qty, price, status, response.text)
