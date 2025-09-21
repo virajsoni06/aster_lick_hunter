@@ -342,6 +342,12 @@ class OrderCleanup:
 
                 symbol_orders[symbol][side_key].append(order_type)
 
+            # Helper function to format price with proper precision
+            def format_price(symbol, price):
+                """Format price to 6 decimal places as a fallback."""
+                # Simple formatting - you may want to fetch symbol specs for proper precision
+                return f"{price:.6f}"
+
             # Check each position for missing TP/SL
             for symbol, pos_detail in position_details.items():
                 position_amount = pos_detail['amount']
