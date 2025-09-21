@@ -61,7 +61,10 @@ class LiquidationStreamer:
         usdt_value = qty * price  # Calculate USDT value
 
         insert_liquidation(self.conn, symbol, side, qty, price)
-        log.info(f"Liquidation: {symbol} {side} {qty} @ {price} (${usdt_value:.2f} USDT)")
+
+        # Determine position type that was liquidated
+        position_type = "Long" if side == "SELL" else "Short"
+        log.info(f"{position_type} Liquidation: {symbol} {side} {qty:.2f} @ {price} (${usdt_value:.2f} USDT)")
 
         # Pass to message handler (e.g., for trading decisions)
         if self.message_handler:
