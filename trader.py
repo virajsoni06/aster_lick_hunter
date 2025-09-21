@@ -225,18 +225,12 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     # Determine position side based on hedge mode
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
     if hedge_mode:
-        # In hedge mode, determine position side based on trade direction
-        if trade_side_value == 'OPPOSITE':
-            # For liquidation hunting in hedge mode:
-            # If liquidation was LONG (forced sell), we open SHORT position
-            # If liquidation was SHORT (forced buy), we open LONG position
-            if liquidation_side == 'SELL':
-                position_side = 'SHORT'
-            else:
-                position_side = 'LONG'
-        else:
-            # Use configured hedge position side
-            position_side = symbol_config.get('hedge_position_side', 'LONG')
+        # In hedge mode, position side must match the trade direction
+        # BUY opens LONG, SELL opens SHORT
+        if trade_side == 'BUY':
+            position_side = 'LONG'
+        else:  # SELL
+            position_side = 'SHORT'
     else:
         # In one-way mode, always use BOTH
         position_side = 'BOTH'
@@ -332,6 +326,8 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
 
     # Make actual request - place main order only
     try:
+        # Debug: Log exactly what we're sending
+        log.info(f"Sending main order: {json.dumps(main_order, indent=2)}")
         response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=main_order)
         if response.status_code == 200:
             resp_data = response.json()

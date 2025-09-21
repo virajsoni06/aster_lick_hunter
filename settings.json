@@ -74,7 +74,7 @@
       "price_protect": false
     },
     "ASTERUSDT": {
-      "volume_threshold": 50.0,
+      "volume_threshold": 5.0,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -93,7 +93,7 @@
       "price_protect": false
     },
     "XRPUSDT": {
-      "volume_threshold": 100.0,
+      "volume_threshold": 1.0,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
