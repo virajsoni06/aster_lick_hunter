@@ -380,8 +380,8 @@ class OrderCleanup:
                     logger.debug(f"Orders for {symbol}: {symbol_orders[symbol]}")
                     logger.debug(f"Checking position side '{order_side_key}' for {symbol}, found orders: {existing_orders}")
 
-                # Check for TP orders
-                has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT']
+                # Check for TP orders (could be LIMIT orders acting as TP)
+                has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']
                             for order_type in existing_orders)
 
                 # Check for SL orders (including trailing stops)
@@ -410,10 +410,11 @@ class OrderCleanup:
                     tp_order = {
                         'symbol': symbol,
                         'side': tp_side,
-                        'type': 'TAKE_PROFIT_MARKET',
-                        'stopPrice': formatted_tp_price,
+                        'type': 'LIMIT',
+                        'price': formatted_tp_price,
                         'quantity': str(abs(position_amount)),
-                        'positionSide': position_side
+                        'positionSide': position_side,
+                        'timeInForce': 'GTC'
                     }
 
                     if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
