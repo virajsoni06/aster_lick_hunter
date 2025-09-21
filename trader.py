@@ -53,7 +53,7 @@ async def fetch_exchange_info():
         log.error(f"Error fetching exchange info: {e}")
 
 def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
-    """Calculate the quantity to trade based on USDT value and current price."""
+    """Calculate the quantity to trade based on USDT value (position size) and current price."""
     if symbol not in symbol_specs:
         log.error(f"No specs found for {symbol}")
         return None
@@ -64,7 +64,7 @@ def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
 
     specs = symbol_specs[symbol]
 
-    # Calculate raw quantity
+    # Calculate raw quantity from position value
     raw_qty = usdt_value / current_price
 
     # Round to step size
@@ -82,7 +82,7 @@ def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
     precision = specs['quantityPrecision']
     qty = round(qty, precision)
 
-    log.info(f"Calculated quantity for {symbol}: {usdt_value} USDT @ {current_price} = {qty}")
+    log.info(f"Calculated quantity for {symbol}: {usdt_value} USDT position @ {current_price} = {qty}")
 
     return qty
 
@@ -186,12 +186,16 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     else:
         trade_side = trade_side_value
 
-    # Calculate quantity from USDT value
-    trade_value_usdt = symbol_config.get('trade_value_usdt', 100)
-    trade_qty = calculate_quantity_from_usdt(symbol, trade_value_usdt, price)
+    # Calculate position size from collateral and leverage
+    trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
+    leverage = symbol_config.get('leverage', 10)
+    position_size_usdt = trade_collateral_usdt * leverage  # Actual position size
+
+    # Calculate quantity from position size
+    trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
 
     if trade_qty is None or trade_qty <= 0:
-        log.error(f"Could not calculate valid quantity for {symbol} with {trade_value_usdt} USDT")
+        log.error(f"Could not calculate valid quantity for {symbol} with {trade_collateral_usdt} USDT collateral (${position_size_usdt} position)")
         return
 
     # Determine position side based on hedge mode
