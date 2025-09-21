@@ -95,6 +95,18 @@ class Dashboard {
                 this.showToast(event.data.message, 'warning');
                 this.loadConfig(); // Reload config to update selectors
                 break;
+            case 'pnl_updated':
+                this.showToast(event.data.message, 'info');
+                // Reload PNL data and trades with updated PNL
+                this.loadPNLData();
+                this.loadTrades();
+                break;
+            case 'trade_pnl_synced':
+                // Refresh trades to show updated PNL
+                this.loadTrades();
+                // Also update PNL summary
+                this.loadPNLData();
+                break;
             case 'heartbeat':
                 // Keep connection alive
                 break;
@@ -283,17 +295,40 @@ class Dashboard {
         const row = document.createElement('tr');
         const sideClass = trade.side === 'BUY' ? 'position-long' : 'position-short';
         const statusClass = trade.status === 'SUCCESS' ? 'badge-success' :
-                           trade.status === 'SIMULATED' ? 'badge-warning' : 'badge-danger';
+                           trade.status === 'SIMULATED' ? 'badge-warning' :
+                           trade.status === 'NEW' ? 'badge-info' :
+                           trade.status === 'CANCELED' ? 'badge-secondary' : 'badge-danger';
+
+        // Safely parse PnL values
+        const realizedPnl = parseFloat(trade.realized_pnl || 0);
+        const commission = parseFloat(trade.commission || 0);
+        const netPnl = parseFloat(trade.net_pnl || 0);
+        const qty = parseFloat(trade.qty || 0);
+        const price = parseFloat(trade.price || 0);
+
+        // Only show PnL for completed trades
+        const showPnl = trade.status === 'SUCCESS' || trade.status === 'FILLED';
+
+        const pnlClass = realizedPnl >= 0 ? 'positive' : 'negative';
+        const netPnlClass = netPnl >= 0 ? 'positive' : 'negative';
 
         row.innerHTML = `
             <td>${this.formatTime(trade.timestamp)}</td>
-            <td>${trade.symbol}</td>
-            <td class="${sideClass}">${trade.side}</td>
-            <td>${parseFloat(trade.qty).toFixed(4)}</td>
-            <td>$${parseFloat(trade.price).toFixed(4)}</td>
-            <td><span class="badge ${statusClass}">${trade.status}</span></td>
+            <td>${trade.symbol || ''}</td>
+            <td class="${sideClass}">${trade.side || ''}</td>
+            <td>${!isNaN(qty) ? qty.toFixed(4) : '0.0000'}</td>
+            <td>${!isNaN(price) ? '$' + price.toFixed(4) : '$0.0000'}</td>
+            <td class="${showPnl ? pnlClass : ''}">${showPnl ? this.formatCurrency(realizedPnl) : '-'}</td>
+            <td class="${showPnl ? 'negative' : ''}">${showPnl ? this.formatCurrency(commission) : '-'}</td>
+            <td class="${showPnl ? netPnlClass : ''}">${showPnl ? this.formatCurrency(netPnl) : '-'}</td>
+            <td><span class="badge ${statusClass}">${trade.status || 'UNKNOWN'}</span></td>
             <td>${trade.order_type || 'LIMIT'}</td>
         `;
+
+        // Make row clickable for trade details
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => this.showTradeDetails(trade.id));
+
         return row;
     }
 
@@ -815,6 +850,169 @@ class Dashboard {
         toast.querySelector('.toast-close').addEventListener('click', () => {
             toast.remove();
         });
+    }
+
+    async showTradeDetails(tradeId) {
+        try {
+            const response = await axios.get(`/api/trades/${tradeId}`);
+            const trade = response.data;
+
+            const modal = document.getElementById('trade-modal');
+            const modalBody = document.getElementById('trade-modal-body');
+
+            // Build detailed HTML
+            let html = `
+                <div class="trade-details">
+                    <div class="trade-info">
+                        <h4>Trade Information</h4>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Symbol:</label>
+                                <span>${trade.symbol}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Side:</label>
+                                <span class="${trade.side === 'BUY' ? 'position-long' : 'position-short'}">${trade.side}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Quantity:</label>
+                                <span>${parseFloat(trade.qty).toFixed(4)}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Price:</label>
+                                <span>$${parseFloat(trade.price).toFixed(4)}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Status:</label>
+                                <span>${trade.status}</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Time:</label>
+                                <span>${this.formatTime(trade.timestamp)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pnl-breakdown">
+                        <h4>PnL Breakdown</h4>
+                        <div class="pnl-grid">
+                            <div class="pnl-item">
+                                <label>Realized PnL:</label>
+                                <span class="${trade.pnl_breakdown?.realized_pnl >= 0 ? 'positive' : 'negative'}">
+                                    ${this.formatCurrency(trade.pnl_breakdown?.realized_pnl || 0)}
+                                </span>
+                            </div>
+                            <div class="pnl-item">
+                                <label>Commission:</label>
+                                <span class="negative">${this.formatCurrency(trade.pnl_breakdown?.commission || 0)}</span>
+                            </div>
+                            <div class="pnl-item">
+                                <label>Funding Fee:</label>
+                                <span class="${trade.pnl_breakdown?.funding_fee >= 0 ? 'positive' : 'negative'}">
+                                    ${this.formatCurrency(trade.pnl_breakdown?.funding_fee || 0)}
+                                </span>
+                            </div>
+                            <div class="pnl-item">
+                                <label>Total PnL:</label>
+                                <span class="${trade.pnl_breakdown?.total_pnl >= 0 ? 'positive' : 'negative'}">
+                                    ${this.formatCurrency(trade.pnl_breakdown?.total_pnl || 0)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+            `;
+
+            // Add related trades if any
+            if (trade.related_trades && trade.related_trades.length > 0) {
+                html += `
+                    <div class="related-trades">
+                        <h4>Related Orders (TP/SL)</h4>
+                        <table class="related-trades-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Side</th>
+                                    <th>Quantity</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                trade.related_trades.forEach(rt => {
+                    html += `
+                        <tr>
+                            <td>${rt.order_type || 'LIMIT'}</td>
+                            <td>${rt.side}</td>
+                            <td>${parseFloat(rt.qty).toFixed(4)}</td>
+                            <td>$${parseFloat(rt.price).toFixed(4)}</td>
+                            <td>${rt.status}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // Add income details if available
+            if (trade.pnl_breakdown?.details && trade.pnl_breakdown.details.length > 0) {
+                html += `
+                    <div class="income-details">
+                        <h4>Income History</h4>
+                        <table class="income-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                trade.pnl_breakdown.details.forEach(detail => {
+                    const amountClass = detail.income >= 0 ? 'positive' : 'negative';
+                    html += `
+                        <tr>
+                            <td>${this.formatTime(detail.timestamp)}</td>
+                            <td>${detail.income_type}</td>
+                            <td class="${amountClass}">${this.formatCurrency(detail.income)}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+
+            modalBody.innerHTML = html;
+            modal.style.display = 'block';
+
+            // Setup close handlers
+            const closeBtn = modal.querySelector('.modal-close');
+            closeBtn.onclick = () => modal.style.display = 'none';
+
+            // Close on outside click
+            window.onclick = (event) => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            };
+
+        } catch (error) {
+            console.error('Error loading trade details:', error);
+            this.showToast('Error loading trade details', 'error');
+        }
     }
 
     async fetchAvailableSymbols() {

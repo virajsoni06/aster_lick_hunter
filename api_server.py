@@ -204,7 +204,7 @@ def get_liquidations():
 
 @app.route('/api/trades')
 def get_trades():
-    """Get trade history."""
+    """Get trade history with PNL data."""
     limit = request.args.get('limit', 100, type=int)
     symbol = request.args.get('symbol', None)
     hours = request.args.get('hours', 24, type=int)
@@ -218,28 +218,56 @@ def get_trades():
 
     # Time filter
     start_time = int((time.time() - hours * 3600) * 1000)
-    conditions.append('timestamp >= ?')
+    conditions.append('t.timestamp >= ?')
     params.append(start_time)
 
     # Symbol filter
     if symbol:
-        conditions.append('symbol = ?')
+        conditions.append('t.symbol = ?')
         params.append(symbol)
 
     # Status filter
     if status:
-        conditions.append('status = ?')
+        conditions.append('t.status = ?')
         params.append(status)
 
-    # Build final query
+    # Build final query with LEFT JOIN to income_history for PNL data
     where_clause = ' AND '.join(conditions) if conditions else '1=1'
-    query = f'''SELECT * FROM trades
-                WHERE {where_clause}
-                ORDER BY timestamp DESC LIMIT ?'''
+    query = f'''
+        SELECT
+            t.*,
+            COALESCE(pnl.realized_pnl, 0) as realized_pnl,
+            COALESCE(pnl.commission, 0) as commission,
+            COALESCE(pnl.funding_fee, 0) as funding_fee,
+            COALESCE(pnl.total_income, 0) as total_pnl
+        FROM trades t
+        LEFT JOIN (
+            SELECT
+                trade_id,
+                SUM(CASE WHEN income_type = 'REALIZED_PNL' THEN income ELSE 0 END) as realized_pnl,
+                SUM(CASE WHEN income_type = 'COMMISSION' THEN income ELSE 0 END) as commission,
+                SUM(CASE WHEN income_type = 'FUNDING_FEE' THEN income ELSE 0 END) as funding_fee,
+                SUM(income) as total_income
+            FROM income_history
+            WHERE trade_id IS NOT NULL AND trade_id != ''
+            GROUP BY trade_id
+        ) pnl ON t.order_id = pnl.trade_id
+        WHERE {where_clause}
+        ORDER BY t.timestamp DESC
+        LIMIT ?
+    '''
     params.append(limit)
 
     cursor = conn.execute(query, params)
-    trades = [dict(row) for row in cursor.fetchall()]
+    columns = [description[0] for description in cursor.description]
+    trades = []
+
+    for row in cursor.fetchall():
+        trade = dict(zip(columns, row))
+        # Calculate net PNL (realized - commission)
+        trade['net_pnl'] = trade['realized_pnl'] + trade['commission']  # Commission is negative
+        trades.append(trade)
+
     conn.close()
 
     return jsonify(trades)
@@ -482,6 +510,83 @@ def remove_symbol():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/trades/<trade_id>')
+def get_trade_details(trade_id):
+    """Get detailed trade information with full PNL breakdown."""
+    conn = get_db_connection()
+
+    # Get trade information
+    cursor = conn.execute('''
+        SELECT t.*,
+               or_main.parent_order_id,
+               or_tp.order_id as tp_order_id,
+               or_sl.order_id as sl_order_id
+        FROM trades t
+        LEFT JOIN order_relationships or_main ON t.order_id = or_main.order_id
+        LEFT JOIN order_relationships or_tp ON or_main.order_id = or_tp.parent_order_id AND or_tp.order_type = 'TP'
+        LEFT JOIN order_relationships or_sl ON or_main.order_id = or_sl.parent_order_id AND or_sl.order_type = 'SL'
+        WHERE t.id = ?
+    ''', (trade_id,))
+
+    trade_row = cursor.fetchone()
+    if not trade_row:
+        conn.close()
+        return jsonify({'error': 'Trade not found'}), 404
+
+    trade = dict(trade_row)
+
+    # Get income history for this trade
+    cursor = conn.execute('''
+        SELECT * FROM income_history
+        WHERE trade_id = ? OR trade_id IN (?, ?)
+        ORDER BY timestamp DESC
+    ''', (trade['order_id'], trade.get('tp_order_id', ''), trade.get('sl_order_id', '')))
+
+    income_records = [dict(row) for row in cursor.fetchall()]
+
+    # Calculate PNL breakdown
+    pnl_breakdown = {
+        'realized_pnl': 0,
+        'commission': 0,
+        'funding_fee': 0,
+        'total_pnl': 0,
+        'details': income_records
+    }
+
+    for record in income_records:
+        if record['income_type'] == 'REALIZED_PNL':
+            pnl_breakdown['realized_pnl'] += record['income']
+        elif record['income_type'] == 'COMMISSION':
+            pnl_breakdown['commission'] += record['income']
+        elif record['income_type'] == 'FUNDING_FEE':
+            pnl_breakdown['funding_fee'] += record['income']
+        pnl_breakdown['total_pnl'] += record['income']
+
+    trade['pnl_breakdown'] = pnl_breakdown
+
+    # Get related trades (TP/SL orders)
+    if trade.get('parent_order_id'):
+        cursor = conn.execute('''
+            SELECT * FROM trades
+            WHERE order_id IN (
+                SELECT order_id FROM order_relationships
+                WHERE parent_order_id = ?
+            )
+        ''', (trade['parent_order_id'],))
+        trade['related_trades'] = [dict(row) for row in cursor.fetchall()]
+    else:
+        cursor = conn.execute('''
+            SELECT * FROM trades
+            WHERE order_id IN (
+                SELECT order_id FROM order_relationships
+                WHERE parent_order_id = ?
+            )
+        ''', (trade['order_id'],))
+        trade['related_trades'] = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+    return jsonify(trade)
+
 @app.route('/api/config/defaults')
 def get_default_config():
     """Get default symbol configuration template."""
@@ -626,6 +731,8 @@ def monitor_database():
     conn = get_db_connection()
     last_liquidation_id = 0
     last_trade_id = 0
+    last_pnl_sync = time.time()
+    pnl_tracker = PNLTracker(DB_PATH)
 
     # Get initial max IDs
     cursor = conn.execute('SELECT MAX(id) FROM liquidations')
@@ -664,12 +771,45 @@ def monitor_database():
                 add_event('new_trade', dict(trade))
                 last_trade_id = trade['id']
 
+                # If trade is successful, trigger PNL sync after a short delay
+                if trade['status'] == 'SUCCESS':
+                    # Schedule PNL sync for this trade
+                    threading.Timer(5.0, lambda: sync_trade_pnl(trade['order_id'])).start()
+
+            # Periodic PNL sync (every 5 minutes)
+            if time.time() - last_pnl_sync > 300:
+                try:
+                    print("Running periodic PNL sync...")
+                    new_records = pnl_tracker.sync_recent_income(hours=1)
+                    if new_records > 0:
+                        add_event('pnl_updated', {'new_records': new_records, 'message': f'Synced {new_records} new income records'})
+                    last_pnl_sync = time.time()
+                except Exception as e:
+                    print(f"PNL sync error: {e}")
+
             conn.close()
 
         except Exception as e:
             print(f"Monitor error: {e}")
 
         time.sleep(2)
+
+def sync_trade_pnl(order_id):
+    """Sync PNL for a specific trade after it closes."""
+    try:
+        tracker = PNLTracker(DB_PATH)
+        # Sync recent income (last hour should capture the trade)
+        new_records = tracker.sync_recent_income(hours=1)
+
+        if new_records > 0:
+            add_event('trade_pnl_synced', {
+                'order_id': order_id,
+                'new_records': new_records,
+                'message': f'PNL synced for order {order_id}'
+            })
+            print(f"PNL synced for order {order_id}: {new_records} new records")
+    except Exception as e:
+        print(f"Error syncing PNL for order {order_id}: {e}")
 
 # Start monitoring thread
 monitor_thread = threading.Thread(target=monitor_database, daemon=True)

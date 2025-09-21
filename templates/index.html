@@ -241,6 +241,9 @@
                                 <th>Side</th>
                                 <th>Quantity</th>
                                 <th>Price</th>
+                                <th>PnL</th>
+                                <th>Commission</th>
+                                <th>Net PnL</th>
                                 <th>Status</th>
                                 <th>Type</th>
                             </tr>
@@ -255,6 +258,19 @@
 
         <!-- Toast Container -->
         <div id="toast-container"></div>
+
+        <!-- Trade Details Modal -->
+        <div id="trade-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Trade Details</h3>
+                    <span class="modal-close">&times;</span>
+                </div>
+                <div class="modal-body" id="trade-modal-body">
+                    <!-- Trade details will be populated here -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
