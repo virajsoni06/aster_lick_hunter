@@ -342,11 +342,8 @@ class OrderCleanup:
 
                 symbol_orders[symbol][side_key].append(order_type)
 
-            # Helper function to format price with proper precision
-            def format_price(symbol, price):
-                """Format price to 6 decimal places as a fallback."""
-                # Simple formatting - you may want to fetch symbol specs for proper precision
-                return f"{price:.6f}"
+            # Import format_price from trader which has the cached symbol specs
+            from trader import format_price
 
             # Check each position for missing TP/SL
             for symbol, pos_detail in position_details.items():
@@ -421,30 +418,31 @@ class OrderCleanup:
 
                     # Check if should use trailing stop
                     if symbol_config.get('use_trailing_stop', False):
-                        # Trailing stop
-                        callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
-                        activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
+                        # For recovery orders, use fixed stop loss instead
+                        # Trailing stops are difficult to place after position is already open
+                        # as they may immediately trigger if market has moved
+                        logger.info(f"Converting trailing stop to fixed stop for recovery order on {symbol}")
 
+                        # Use fixed stop loss for recovery
+                        sl_pct = symbol_config.get('stop_loss_pct', 5.0)
                         if position_amount > 0:  # LONG position
-                            activation_price = entry_price * (1 + activation_pct / 100.0)
+                            sl_price = entry_price * (1 - sl_pct / 100.0)
                             sl_side = 'SELL'
                         else:  # SHORT position
-                            activation_price = entry_price * (1 - activation_pct / 100.0)
+                            sl_price = entry_price * (1 + sl_pct / 100.0)
                             sl_side = 'BUY'
 
-                        # Format activation price properly
-                        formatted_activation_price = format_price(symbol, activation_price)
+                        formatted_sl_price = format_price(symbol, sl_price)
 
                         sl_order = {
                             'symbol': symbol,
                             'side': sl_side,
-                            'type': 'TRAILING_STOP_MARKET',
+                            'type': 'STOP_MARKET',
+                            'stopPrice': formatted_sl_price,
                             'quantity': str(abs(position_amount)),
-                            'callbackRate': str(callback_rate),
-                            'activationPrice': formatted_activation_price,
                             'positionSide': position_side
                         }
-                        logger.info(f"Will place recovery trailing stop for {symbol}, activation at {formatted_activation_price}")
+                        logger.info(f"Will place recovery stop loss for {symbol} at {formatted_sl_price}")
                     else:
                         # Fixed stop loss
                         sl_pct = symbol_config.get('stop_loss_pct', 5.0)
