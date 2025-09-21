@@ -111,7 +111,7 @@
       "working_type": "CONTRACT_PRICE",
       "price_protect": false
     },
-      "WLFIUSDT": {
+    "WLFIUSDT": {
       "volume_threshold": 100000.0,
       "leverage": 10,
       "margin_type": "CROSSED",
@@ -129,6 +129,19 @@
       "trailing_callback_rate": 0.5,
       "working_type": "CONTRACT_PRICE",
       "price_protect": false
+    },
+    "HEMIUSDT": {
+      "volume_threshold": 100000,
+      "leverage": 10,
+      "margin_type": "CROSSED",
+      "trade_side": "OPPOSITE",
+      "trade_value_usdt": 1,
+      "price_offset_pct": 0.1,
+      "max_position_usdt": 20,
+      "take_profit_enabled": true,
+      "take_profit_pct": 5,
+      "stop_loss_enabled": true,
+      "stop_loss_pct": 20
     }
   }
 }

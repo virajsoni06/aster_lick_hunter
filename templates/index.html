@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aster Liquidation Hunter - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>Aster Liquidation Hunter</h1>
+            <div class="header-controls">
+                <span id="connection-status" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </span>
+                <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Account Summary -->
+            <div class="card account-summary">
+                <h2>Account Summary</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <label>Wallet Balance</label>
+                        <span id="wallet-balance" class="stat-value">$0.00</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Unrealized PnL</label>
+                        <span id="unrealized-pnl" class="stat-value">$0.00</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Margin Used</label>
+                        <span id="margin-used" class="stat-value">$0.00</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Available Balance</label>
+                        <span id="available-balance" class="stat-value">$0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trading Statistics -->
+            <div class="card trading-stats">
+                <h2>Trading Statistics (24h)</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <label>Total Trades</label>
+                        <span id="total-trades" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Success Rate</label>
+                        <span id="success-rate" class="stat-value">0%</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Liquidations Tracked</label>
+                        <span id="liquidations-count" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Volume Processed</label>
+                        <span id="volume-processed" class="stat-value">$0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Positions -->
+            <div class="card positions-section">
+                <h2>Active Positions</h2>
+                <div class="table-container">
+                    <table id="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Size</th>
+                                <th>Entry Price</th>
+                                <th>Mark Price</th>
+                                <th>PnL</th>
+                                <th>PnL %</th>
+                                <th>Margin</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positions-tbody">
+                            <!-- Positions will be populated here -->
+                        </tbody>
+                    </table>
+                    <div id="no-positions" class="no-data">No active positions</div>
+                </div>
+            </div>
+
+            <!-- Volume Chart -->
+            <div class="card chart-container">
+                <h2>Liquidation Volume (24h)</h2>
+                <canvas id="volume-chart"></canvas>
+            </div>
+
+            <!-- Recent Liquidations -->
+            <div class="card liquidations-section">
+                <h2>Recent Liquidations</h2>
+                <div class="table-container">
+                    <table id="liquidations-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="liquidations-tbody">
+                            <!-- Liquidations will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Trades -->
+            <div class="card trades-section">
+                <h2>Recent Trades</h2>
+                <div class="table-container">
+                    <table id="trades-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-tbody">
+                            <!-- Trades will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Configuration Editor -->
+            <div class="card config-section">
+                <h2>Configuration</h2>
+                <div class="config-tabs">
+                    <button class="tab-btn active" data-tab="global">Global Settings</button>
+                    <button class="tab-btn" data-tab="symbols">Symbol Settings</button>
+                    <button class="tab-btn" data-tab="manage">Manage Symbols</button>
+                </div>
+                <div id="config-global" class="tab-content active">
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label>Volume Window (sec)</label>
+                            <input type="number" id="volume_window_sec" class="config-input">
+                        </div>
+                        <div class="config-item">
+                            <label>Simulate Only</label>
+                            <select id="simulate_only" class="config-input">
+                                <option value="false">False</option>
+                                <option value="true">True</option>
+                            </select>
+                        </div>
+                        <div class="config-item">
+                            <label>Max Total Exposure (USDT)</label>
+                            <input type="number" id="max_total_exposure_usdt" class="config-input" step="0.01">
+                        </div>
+                        <div class="config-item">
+                            <label>Order TTL (sec)</label>
+                            <input type="number" id="order_ttl_seconds" class="config-input">
+                        </div>
+                    </div>
+                </div>
+                <div id="config-symbols" class="tab-content">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                        <select id="symbol-selector" class="config-input" style="flex: 1;">
+                            <!-- Symbol options will be populated here -->
+                        </select>
+                        <button id="remove-symbol-btn" class="btn btn-danger">Remove Symbol</button>
+                    </div>
+                    <div id="symbol-config" class="config-grid">
+                        <!-- Symbol-specific config will be populated here -->
+                    </div>
+                </div>
+                <div id="config-manage" class="tab-content">
+                    <div class="symbol-manager">
+                        <div style="margin-bottom: 20px;">
+                            <button id="fetch-symbols-btn" class="btn btn-primary">Fetch Available Symbols</button>
+                            <span id="symbol-count" style="margin-left: 15px; color: var(--text-secondary);"></span>
+                        </div>
+                        <div class="symbol-search-container">
+                            <input type="text" id="symbol-search" class="config-input" placeholder="Search symbols..." style="width: 100%; margin-bottom: 10px;">
+                        </div>
+                        <div id="available-symbols" class="available-symbols-grid">
+                            <!-- Available symbols will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                <button id="save-config-btn" class="btn btn-success">Save Configuration</button>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toast-container"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
