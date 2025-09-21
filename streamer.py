@@ -58,9 +58,10 @@ class LiquidationStreamer:
         side = liquidation['S']
         qty = float(liquidation['q'])
         price = float(liquidation['p']) if liquidation['p'] != '0' else 0.0  #Avg price or 0
+        usdt_value = qty * price  # Calculate USDT value
 
         insert_liquidation(self.conn, symbol, side, qty, price)
-        log.info(f"Liquidation: {symbol} {side} {qty} @ {price}")
+        log.info(f"Liquidation: {symbol} {side} {qty} @ {price} (${usdt_value:.2f} USDT)")
 
         # Pass to message handler (e.g., for trading decisions)
         if self.message_handler:

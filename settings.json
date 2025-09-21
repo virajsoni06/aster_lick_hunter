@@ -5,12 +5,13 @@
     "db_path": "bot.db",
     "multi_assets_mode": true,
     "set_margin_type": true,
-    "set_leverage": true
+    "set_leverage": true,
+    "use_usdt_volume": true
   },
   "symbols": {
     "BTCUSDT": {
-      "volume_threshold": 1000.0,
-      "leverage": 20,
+      "volume_threshold": 1000000.0,
+      "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
@@ -18,8 +19,8 @@
       "position_side": "BOTH"
     },
     "ETHUSDT": {
-      "volume_threshold": 500.0,
-      "leverage": 20,
+      "volume_threshold": 500000.0,
+      "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
@@ -27,8 +28,8 @@
       "position_side": "BOTH"
     },
     "SOLUSDT": {
-      "volume_threshold": 100.0,
-      "leverage": 20,
+      "volume_threshold": 10000.0,
+      "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
@@ -36,8 +37,8 @@
       "position_side": "BOTH"
     },
     "ASTERUSDT": {
-      "volume_threshold": 50.0,
-      "leverage": 20,
+      "volume_threshold": 5000.0,
+      "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
@@ -46,7 +47,7 @@
     },
     "XRPUSDT": {
       "volume_threshold": 100.0,
-      "leverage": 20,
+      "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,

@@ -45,9 +45,10 @@ def init_db(db_path):
 def insert_liquidation(conn, symbol, side, qty, price):
     """Insert a liquidation event into the database."""
     timestamp = int(time.time() * 1000)  # ms timestamp
+    usdt_value = qty * price  # Calculate USDT value
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO liquidations (timestamp, symbol, side, qty, price) VALUES (?, ?, ?, ?, ?)',
-                   (timestamp, symbol, side, qty, price))
+    cursor.execute('INSERT INTO liquidations (timestamp, symbol, side, qty, price, usdt_value) VALUES (?, ?, ?, ?, ?, ?)',
+                   (timestamp, symbol, side, qty, price, usdt_value))
     conn.commit()
     return cursor.lastrowid
 
@@ -57,6 +58,16 @@ def get_volume_in_window(conn, symbol, window_sec):
     start_time = current_time - (window_sec * 1000)
     cursor = conn.cursor()
     cursor.execute('SELECT SUM(qty) FROM liquidations WHERE symbol = ? AND timestamp >= ?',
+                   (symbol, start_time))
+    result = cursor.fetchone()[0]
+    return result or 0.0
+
+def get_usdt_volume_in_window(conn, symbol, window_sec):
+    """Get total USDT value of liquidations for the symbol in the last window_sec seconds."""
+    current_time = int(time.time() * 1000)
+    start_time = current_time - (window_sec * 1000)
+    cursor = conn.cursor()
+    cursor.execute('SELECT SUM(usdt_value) FROM liquidations WHERE symbol = ? AND timestamp >= ?',
                    (symbol, start_time))
     result = cursor.fetchone()[0]
     return result or 0.0

@@ -1,6 +1,6 @@
 import asyncio
 from config import config
-from db import get_volume_in_window, insert_trade, get_db_conn
+from db import get_volume_in_window, get_usdt_volume_in_window, insert_trade, get_db_conn
 from auth import make_authenticated_request
 from utils import log
 import json
@@ -139,12 +139,21 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         log.debug(f"Symbol {symbol} not in config")
         return
 
-    # Check volume window
-    volume = get_volume_in_window(conn, symbol, config.VOLUME_WINDOW_SEC)
+    # Check volume window (use USDT volume if enabled)
+    use_usdt_volume = config.GLOBAL_SETTINGS.get('use_usdt_volume', False)
+    if use_usdt_volume:
+        volume = get_usdt_volume_in_window(conn, symbol, config.VOLUME_WINDOW_SEC)
+        volume_type = "USDT"
+    else:
+        volume = get_volume_in_window(conn, symbol, config.VOLUME_WINDOW_SEC)
+        volume_type = "tokens"
+
     threshold = config.SYMBOL_SETTINGS[symbol]['volume_threshold']
     if volume <= threshold:
-        log.debug(f"Volume {volume} below threshold {threshold} for {symbol}")
+        log.debug(f"Volume {volume:.2f} {volume_type} below threshold {threshold} for {symbol}")
         return
+
+    log.info(f"Volume threshold met for {symbol}: {volume:.2f} {volume_type} > {threshold}")
 
     # Get symbol-specific settings
     symbol_config = config.SYMBOL_SETTINGS[symbol]
