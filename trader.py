@@ -562,15 +562,22 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
             activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
 
             # Calculate activation price
+            # For trailing stops:
+            # LONG: activates when price rises above entry, trails down from there
+            # SHORT: activates when price falls below entry, trails up from there
             if actual_position_side == 'LONG':
+                # LONG position: activation above entry price (profit direction)
                 activation_price = fill_price * (1 + activation_pct / 100.0)
             elif actual_position_side == 'SHORT':
+                # SHORT position: activation below entry price (profit direction)
                 activation_price = fill_price * (1 - activation_pct / 100.0)
             else:
                 # One-way mode
                 if entry_side == 'BUY':
+                    # BUY order (long): activation above entry
                     activation_price = fill_price * (1 + activation_pct / 100.0)
                 else:
+                    # SELL order (short): activation below entry
                     activation_price = fill_price * (1 - activation_pct / 100.0)
 
             # Determine SL side
@@ -593,7 +600,7 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
             if not config.GLOBAL_SETTINGS.get('hedge_mode', False):
                 sl_order['reduceOnly'] = 'true'
             tp_sl_orders.append(sl_order)
-            log.info(f"Preparing trailing stop with {activation_pct}% activation, {callback_rate}% callback")
+            log.info(f"Preparing trailing stop: activation at {activation_price:.6f} ({activation_pct}% from {fill_price:.6f}), {callback_rate}% callback")
         else:
             # Fixed stop loss
             sl_price = calculate_sl_price(fill_price, entry_side, sl_pct, actual_position_side)
@@ -625,7 +632,11 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
         if config.SIMULATE_ONLY:
             for order in tp_sl_orders:
                 order_type = order['type']
-                order_price = order.get('stopPrice', 'N/A')
+                # For trailing stop, use activationPrice; for others use stopPrice
+                if order_type == 'TRAILING_STOP_MARKET':
+                    order_price = order.get('activationPrice', 'N/A')
+                else:
+                    order_price = order.get('stopPrice', 'N/A')
                 order_id = f'simulated_{order_type}_{int(time.time())}'
                 log.info(f"Simulating {order_type} order: {json.dumps(order, indent=2)}")
                 insert_trade(conn, symbol, order_id, order['side'], qty, order_price, 'SIMULATED',
@@ -647,8 +658,13 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                             order_id = str(result['orderId'])
                             order_type = tp_sl_orders[i]['type']
                             log.info(f"Placed {order_type} order {order_id}")
+                            # For trailing stop, use activationPrice; for others use stopPrice
+                            if order_type == 'TRAILING_STOP_MARKET':
+                                price_field = tp_sl_orders[i].get('activationPrice', 'N/A')
+                            else:
+                                price_field = tp_sl_orders[i].get('stopPrice', 'N/A')
                             insert_trade(conn, symbol, order_id, tp_sl_orders[i]['side'], qty,
-                                       tp_sl_orders[i].get('stopPrice', 'N/A'),
+                                       price_field,
                                        result.get('status', 'NEW'), json.dumps(result),
                                        order_type, main_order_id)
 
@@ -670,8 +686,13 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                         order_id = str(resp_data.get('orderId', 'unknown'))
                         order_type = order['type']
                         log.info(f"Placed {order_type} order {order_id}")
+                        # For trailing stop, use activationPrice; for others use stopPrice
+                        if order_type == 'TRAILING_STOP_MARKET':
+                            price_field = order.get('activationPrice', 'N/A')
+                        else:
+                            price_field = order.get('stopPrice', 'N/A')
                         insert_trade(conn, symbol, order_id, order['side'], qty,
-                                   order.get('stopPrice', 'N/A'),
+                                   price_field,
                                    resp_data.get('status', 'NEW'), json.dumps(resp_data),
                                    order_type, main_order_id)
 
