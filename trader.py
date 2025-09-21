@@ -110,11 +110,59 @@ def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
 
     return qty
 
+async def validate_minimum_notionals():
+    """Check and adjust minimum notional values for each configured symbol."""
+    import requests
+
+    # Get current prices for all symbols
+    try:
+        response = requests.get(f"{config.BASE_URL}/fapi/v1/ticker/price")
+        if response.status_code == 200:
+            prices = {item['symbol']: float(item['price']) for item in response.json()}
+        else:
+            log.error(f"Failed to fetch prices: {response.text}")
+            return
+    except Exception as e:
+        log.error(f"Error fetching prices: {e}")
+        return
+
+    # Check each symbol's minimum notional
+    for symbol in config.SYMBOLS:
+        if symbol not in prices:
+            log.warning(f"Could not find price for {symbol}")
+            continue
+
+        current_price = prices[symbol]
+        symbol_config = config.SYMBOL_SETTINGS[symbol]
+
+        # Calculate position size from collateral and leverage
+        trade_value_usdt = symbol_config.get('trade_value_usdt', 1.0)
+        leverage = symbol_config.get('leverage', 10)
+        position_size_usdt = trade_value_usdt * leverage
+
+        # Minimum notional is typically $5 for most symbols
+        MIN_NOTIONAL = 5.0
+
+        if position_size_usdt < MIN_NOTIONAL:
+            # Calculate minimum trade value needed
+            min_trade_value = MIN_NOTIONAL / leverage
+
+            log.warning(f"{symbol}: Position size ${position_size_usdt:.2f} < minimum ${MIN_NOTIONAL}")
+            log.info(f"{symbol}: Adjusting trade_value_usdt from {trade_value_usdt} to {min_trade_value:.2f}")
+
+            # Update the config in memory
+            config.SYMBOL_SETTINGS[symbol]['trade_value_usdt'] = min_trade_value
+        else:
+            log.info(f"{symbol}: Position size ${position_size_usdt:.2f} OK (>= ${MIN_NOTIONAL})")
+
 async def init_symbol_settings():
     """Set position mode, multi-assets mode, leverage and margin type for each symbol via API."""
 
     # Fetch exchange info first to get symbol specifications
     await fetch_exchange_info()
+
+    # Validate and adjust minimum notional values
+    await validate_minimum_notionals()
 
     # Check and set hedge mode if enabled
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
@@ -237,8 +285,63 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
     await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
 
+def get_orderbook_price(symbol, side, fallback_price, offset_pct):
+    """Get optimal price from orderbook or fallback to offset calculation."""
+    import requests
+
+    try:
+        # Fetch orderbook with depth 20
+        response = requests.get(f"{config.BASE_URL}/fapi/v1/depth",
+                                params={'symbol': symbol, 'limit': 20})
+
+        if response.status_code != 200:
+            log.debug(f"Failed to fetch orderbook: {response.text}")
+            return get_limit_price(fallback_price, side, offset_pct)
+
+        orderbook = response.json()
+        bids = [[float(p), float(q)] for p, q in orderbook['bids']]
+        asks = [[float(p), float(q)] for p, q in orderbook['asks']]
+
+        if not bids or not asks:
+            log.debug("Empty orderbook")
+            return get_limit_price(fallback_price, side, offset_pct)
+
+        best_bid = bids[0][0]
+        best_ask = asks[0][0]
+        spread = best_ask - best_bid
+
+        log.info(f"{symbol} Orderbook: Bid {best_bid:.6f} | Ask {best_ask:.6f} | Spread {spread:.6f}")
+
+        if side == 'BUY':
+            # For buy orders, place at or just above best bid for queue priority
+            # If spread is wide, place inside the spread
+            if spread > best_bid * 0.002:  # If spread > 0.2%
+                # Place inside the spread, closer to bid
+                price = best_bid + (spread * 0.2)  # 20% into the spread
+                log.info(f"Wide spread, placing BUY at {price:.6f} (20% into spread)")
+            else:
+                # Tight spread, join or improve best bid slightly
+                price = best_bid + (best_bid * 0.0001)  # Improve by 0.01%
+                log.info(f"Tight spread, placing BUY at {price:.6f} (improving bid)")
+        else:  # SELL
+            # For sell orders, place at or just below best ask
+            if spread > best_ask * 0.002:  # If spread > 0.2%
+                # Place inside the spread, closer to ask
+                price = best_ask - (spread * 0.2)  # 20% into the spread
+                log.info(f"Wide spread, placing SELL at {price:.6f} (20% into spread)")
+            else:
+                # Tight spread, join or improve best ask slightly
+                price = best_ask - (best_ask * 0.0001)  # Improve by 0.01%
+                log.info(f"Tight spread, placing SELL at {price:.6f} (improving ask)")
+
+        return price
+
+    except Exception as e:
+        log.error(f"Error fetching orderbook: {e}")
+        return get_limit_price(fallback_price, side, offset_pct)
+
 def get_limit_price(price, side, offset_pct):
-    """Calculate limit price for maker order with offset."""
+    """Calculate limit price for maker order with offset (fallback method)."""
     offset = price * (offset_pct / 100.0)
     if side == 'BUY':
         return price * (1 - (offset_pct / 100.0))  # Bid lower for buy
@@ -281,9 +384,9 @@ def calculate_sl_price(entry_price, side, sl_pct, position_side=None):
 
 async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1, symbol_config=None):
     """Place main order and schedule TP/SL for after fill."""
-    # For maker, use limit with price offset
+    # For maker, use orderbook-based pricing
     if order_type == 'LIMIT':
-        entry_price = get_limit_price(last_price, side, offset_pct)
+        entry_price = get_orderbook_price(symbol, side, last_price, offset_pct)
     else:
         raise ValueError("Only LIMIT orders supported")
 
@@ -431,9 +534,11 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
             'quantity': str(qty),
             'positionSide': position_side,
             'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-            'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
-            'reduceOnly': 'true'  # Now safe to use reduceOnly since position exists
+            'priceProtect': str(symbol_config.get('price_protect', False)).lower()
         }
+        # Only add reduceOnly if NOT in hedge mode (reduceOnly cannot be sent in Hedge Mode)
+        if not config.GLOBAL_SETTINGS.get('hedge_mode', False):
+            tp_order['reduceOnly'] = 'true'
         tp_sl_orders.append(tp_order)
         log.info(f"Preparing TP order at {tp_price:.6f} ({tp_pct}% from {fill_price:.6f})")
 
@@ -472,9 +577,11 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                 'callbackRate': str(callback_rate),
                 'activationPrice': format_price(symbol, activation_price),
                 'positionSide': position_side,
-                'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-                'reduceOnly': 'true'
+                'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE')
             }
+            # Only add reduceOnly if NOT in hedge mode (reduceOnly cannot be sent in Hedge Mode)
+            if not config.GLOBAL_SETTINGS.get('hedge_mode', False):
+                sl_order['reduceOnly'] = 'true'
             tp_sl_orders.append(sl_order)
             log.info(f"Preparing trailing stop with {activation_pct}% activation, {callback_rate}% callback")
         else:
@@ -495,9 +602,11 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                 'quantity': str(qty),
                 'positionSide': position_side,
                 'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-                'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
-                'reduceOnly': 'true'
+                'priceProtect': str(symbol_config.get('price_protect', False)).lower()
             }
+            # Only add reduceOnly if NOT in hedge mode (reduceOnly cannot be sent in Hedge Mode)
+            if not config.GLOBAL_SETTINGS.get('hedge_mode', False):
+                sl_order['reduceOnly'] = 'true'
             tp_sl_orders.append(sl_order)
             log.info(f"Preparing SL order at {sl_price:.6f} ({sl_pct}% from {fill_price:.6f})")
 
