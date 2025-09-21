@@ -68,7 +68,7 @@
       "trade_side": "OPPOSITE",
       "trade_value_usdt": 1,
       "price_offset_pct": 0.01,
-      "max_position_usdt": 20,
+      "max_position_usdt": 100,
       "take_profit_enabled": true,
       "take_profit_pct": 5,
       "stop_loss_enabled": true,

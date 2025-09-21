@@ -467,7 +467,13 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
 
 async def monitor_and_place_tp_sl(order_id, tp_sl_params):
     """Monitor main order status and place TP/SL when filled."""
-    symbol = tp_sl_params['symbol']
+    symbol = tp_sl_params.get('symbol') if tp_sl_params else None
+
+    # Add validation
+    if not symbol:
+        log.error(f"Missing symbol in tp_sl_params for order {order_id}: {tp_sl_params}")
+        return
+
     max_checks = 60  # Check for 60 seconds max
     check_interval = 1  # Check every second
 
@@ -498,12 +504,20 @@ async def monitor_and_place_tp_sl(order_id, tp_sl_params):
             await asyncio.sleep(check_interval)
 
     # Timeout - cancel the unfilled limit order
-    log.warning(f"Timeout monitoring order {order_id} after {max_checks}s, canceling order")
+    log.warning(f"Timeout monitoring order {order_id} after {max_checks}s, canceling order for {symbol}")
     try:
+        # Ensure symbol is not None or empty
+        if not symbol:
+            log.error(f"Cannot cancel order {order_id}: symbol is missing or None")
+            return
+
+        cancel_params = {'symbol': symbol, 'orderId': order_id}
+        log.debug(f"Canceling order with params: {cancel_params}")
+
         cancel_response = make_authenticated_request('DELETE', f"{config.BASE_URL}/fapi/v1/order",
-                                                    params={'symbol': symbol, 'orderId': order_id})
+                                                    params=cancel_params)
         if cancel_response.status_code == 200:
-            log.info(f"Canceled stale limit order {order_id}")
+            log.info(f"Canceled stale limit order {order_id} for {symbol}")
         else:
             log.error(f"Failed to cancel stale order {order_id}: {cancel_response.text}")
     except Exception as e:
