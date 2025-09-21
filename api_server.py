@@ -35,18 +35,17 @@ event_lock = threading.Lock()
 
 # Default symbol configuration template
 DEFAULT_SYMBOL_CONFIG = {
-    "volume_threshold": 100000.0,
+    "volume_threshold": 10000,
     "leverage": 10,
     "margin_type": "CROSSED",
     "trade_side": "OPPOSITE",
-    "trade_value_usdt": 1.0,
+    "trade_value_usdt": 1,
     "price_offset_pct": 0.1,
-    "hedge_position_side": "LONG",
-    "max_position_usdt": 20.0,
+    "max_position_usdt": 20,
     "take_profit_enabled": True,
-    "take_profit_pct": 5.0,
+    "take_profit_pct": 5,
     "stop_loss_enabled": True,
-    "stop_loss_pct": 20.0,
+    "stop_loss_pct": 20,
     "use_trailing_stop": True,
     "trailing_activation_pct": 0.5,
     "trailing_callback_rate": 0.5,
