@@ -4,6 +4,8 @@ from config import config
 from db import init_db, get_db_conn
 from streamer import LiquidationStreamer
 from trader import init_symbol_settings, evaluate_trade
+from order_cleanup import OrderCleanup
+from user_stream import UserDataStream
 from utils import log
 
 def main():
@@ -26,6 +28,29 @@ def main():
         # Initialize symbol settings (leverage/margin type)
         await init_symbol_settings()
 
+        # Initialize order cleanup manager
+        cleanup_interval = config.GLOBAL_SETTINGS.get('order_cleanup_interval_seconds', 20)
+        stale_limit_minutes = config.GLOBAL_SETTINGS.get('stale_limit_order_minutes', 3.0)
+        order_cleanup = OrderCleanup(
+            get_db_conn(),
+            cleanup_interval_seconds=cleanup_interval,
+            stale_limit_order_minutes=stale_limit_minutes
+        )
+        order_cleanup.start()
+        log.info(f"Order cleanup started: interval={cleanup_interval}s, stale_limit={stale_limit_minutes}min")
+
+        # Initialize user data stream for real-time position updates
+        user_stream = UserDataStream(
+            order_manager=None,  # Can add OrderManager if needed
+            position_manager=None,  # Can add PositionManager if needed
+            db_conn=get_db_conn(),
+            order_cleanup=order_cleanup
+        )
+
+        # Start user stream in background
+        user_stream_task = asyncio.create_task(user_stream.start())
+        log.info("User data stream started for position monitoring")
+
         # Create streamer and handler
         async def message_handler(symbol, side, qty, price):
             """Handle incoming liquidation messages."""
@@ -33,8 +58,16 @@ def main():
 
         streamer = LiquidationStreamer(message_handler=message_handler)
 
-        # Run the listener
-        await streamer.listen()
+        try:
+            # Run the listener
+            await streamer.listen()
+        finally:
+            # Cleanup on shutdown
+            log.info("Shutting down services...")
+            order_cleanup.stop()
+            await user_stream.stop()
+            if not user_stream_task.done():
+                user_stream_task.cancel()
 
     # Run the bot
     try:

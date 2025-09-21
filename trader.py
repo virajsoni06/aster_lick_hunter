@@ -1,6 +1,6 @@
 import asyncio
 from config import config
-from db import get_volume_in_window, get_usdt_volume_in_window, insert_trade, get_db_conn
+from db import get_volume_in_window, get_usdt_volume_in_window, insert_trade, get_db_conn, insert_order_relationship
 from auth import make_authenticated_request
 from utils import log
 import json
@@ -497,7 +497,17 @@ async def monitor_and_place_tp_sl(order_id, tp_sl_params):
             log.error(f"Error monitoring order {order_id}: {e}")
             await asyncio.sleep(check_interval)
 
-    log.warning(f"Timeout monitoring order {order_id}, TP/SL not placed")
+    # Timeout - cancel the unfilled limit order
+    log.warning(f"Timeout monitoring order {order_id} after {max_checks}s, canceling order")
+    try:
+        cancel_response = make_authenticated_request('DELETE', f"{config.BASE_URL}/fapi/v1/order",
+                                                    params={'symbol': symbol, 'orderId': order_id})
+        if cancel_response.status_code == 200:
+            log.info(f"Canceled stale limit order {order_id}")
+        else:
+            log.error(f"Failed to cancel stale order {order_id}: {cancel_response.text}")
+    except Exception as e:
+        log.error(f"Error canceling stale order {order_id}: {e}")
 
 async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
     """Place TP/SL orders after main order is filled."""
@@ -621,6 +631,10 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                 insert_trade(conn, symbol, order_id, order['side'], qty, order_price, 'SIMULATED',
                             None, order_type, main_order_id)
         else:
+            # Track which order IDs are for TP and SL
+            tp_order_id = None
+            sl_order_id = None
+
             # Use batch endpoint if multiple orders
             if len(tp_sl_orders) > 1:
                 batch_data = {'batchOrders': json.dumps(tp_sl_orders)}
@@ -637,6 +651,12 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                                        tp_sl_orders[i].get('stopPrice', 'N/A'),
                                        result.get('status', 'NEW'), json.dumps(result),
                                        order_type, main_order_id)
+
+                            # Track TP/SL order IDs
+                            if 'TAKE_PROFIT' in order_type:
+                                tp_order_id = order_id
+                            elif 'STOP' in order_type or 'TRAILING' in order_type:
+                                sl_order_id = order_id
                         else:
                             log.error(f"TP/SL order {i} failed: {result}")
                 else:
@@ -654,5 +674,16 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                                    order.get('stopPrice', 'N/A'),
                                    resp_data.get('status', 'NEW'), json.dumps(resp_data),
                                    order_type, main_order_id)
+
+                        # Track TP/SL order IDs
+                        if 'TAKE_PROFIT' in order_type:
+                            tp_order_id = order_id
+                        elif 'STOP' in order_type or 'TRAILING' in order_type:
+                            sl_order_id = order_id
                     else:
                         log.error(f"{order['type']} order failed: {response.text}")
+
+            # Store order relationships in database
+            if tp_order_id or sl_order_id:
+                insert_order_relationship(conn, main_order_id, symbol, position_side, tp_order_id, sl_order_id)
+                log.info(f"Stored order relationship: main={main_order_id}, tp={tp_order_id}, sl={sl_order_id}")

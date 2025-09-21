@@ -9,7 +9,7 @@
     "set_leverage": true,
     "use_usdt_volume": true,
     "order_ttl_seconds": 30,
-    "max_open_orders_per_symbol": 3,
+    "max_open_orders_per_symbol": 5,
     "max_total_exposure_usdt": 200.0,
     "rate_limit_buffer_pct": 0.4,
     "order_status_check_interval": 5,
@@ -74,7 +74,7 @@
       "price_protect": false
     },
     "ASTERUSDT": {
-      "volume_threshold": 5.0,
+      "volume_threshold": 5000.0,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -93,7 +93,7 @@
       "price_protect": false
     },
     "XRPUSDT": {
-      "volume_threshold": 1.0,
+      "volume_threshold": 200000.0,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -112,7 +112,7 @@
       "price_protect": false
     },
       "WLFIUSDT": {
-      "volume_threshold": 100.0,
+      "volume_threshold": 100000.0,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",

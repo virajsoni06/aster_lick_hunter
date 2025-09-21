@@ -20,7 +20,7 @@ class UserDataStream:
     Receives real-time updates for orders, positions, and account changes.
     """
 
-    def __init__(self, order_manager=None, position_manager=None, db_conn=None):
+    def __init__(self, order_manager=None, position_manager=None, db_conn=None, order_cleanup=None):
         """
         Initialize user data stream.
 
@@ -28,10 +28,12 @@ class UserDataStream:
             order_manager: OrderManager instance for order updates
             position_manager: PositionManager instance for position updates
             db_conn: Database connection for persistence
+            order_cleanup: OrderCleanup instance for cleaning orphaned orders
         """
         self.order_manager = order_manager
         self.position_manager = position_manager
         self.db_conn = db_conn
+        self.order_cleanup = order_cleanup
 
         self.ws_url = "wss://fstream.asterdex.com/ws/"
         self.listen_key = None
@@ -218,12 +220,19 @@ class UserDataStream:
                     upsert_position(self.db_conn, symbol, side, abs(position_amount), entry_price, entry_price)
             else:
                 # Position closed
+                logger.info(f"Position closed for {symbol}")
+
                 if self.position_manager:
                     self.position_manager.close_position(symbol)
 
                 if self.db_conn:
                     from db_updated import close_position
                     close_position(self.db_conn, symbol)
+
+                # Cleanup orphaned TP/SL orders when position closes
+                if self.order_cleanup:
+                    logger.info(f"Triggering order cleanup for closed position {symbol}")
+                    asyncio.create_task(self.order_cleanup.cleanup_on_position_close(symbol))
 
     async def handle_message(self, message: str) -> None:
         """
