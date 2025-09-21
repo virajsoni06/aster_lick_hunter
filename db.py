@@ -1,0 +1,79 @@
+import sqlite3
+import time
+from config import config
+
+def init_db(db_path):
+    """Initialize the SQLite database with tables."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Create liquidations table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS liquidations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            qty REAL NOT NULL,
+            price REAL NOT NULL
+        )
+    ''')
+
+    # Create trades table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            order_id TEXT,
+            side TEXT NOT NULL,
+            qty REAL NOT NULL,
+            price REAL NOT NULL,
+            status TEXT NOT NULL,
+            response TEXT  -- JSON response from API
+        )
+    ''')
+
+    # Create indexes for faster queries
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_liquidations_symbol_timestamp ON liquidations (symbol, timestamp);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol_timestamp ON trades (symbol, timestamp);')
+
+    conn.commit()
+    return conn
+
+def insert_liquidation(conn, symbol, side, qty, price):
+    """Insert a liquidation event into the database."""
+    timestamp = int(time.time() * 1000)  # ms timestamp
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO liquidations (timestamp, symbol, side, qty, price) VALUES (?, ?, ?, ?, ?)',
+                   (timestamp, symbol, side, qty, price))
+    conn.commit()
+    return cursor.lastrowid
+
+def get_volume_in_window(conn, symbol, window_sec):
+    """Get total volume (sum qty) for the symbol in the last window_sec seconds."""
+    current_time = int(time.time() * 1000)
+    start_time = current_time - (window_sec * 1000)
+    cursor = conn.cursor()
+    cursor.execute('SELECT SUM(qty) FROM liquidations WHERE symbol = ? AND timestamp >= ?',
+                   (symbol, start_time))
+    result = cursor.fetchone()[0]
+    return result or 0.0
+
+def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None):
+    """Insert a trade into the database."""
+    timestamp = int(time.time() * 1000)
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO trades (timestamp, symbol, order_id, side, qty, price, status, response) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                   (timestamp, symbol, order_id, side, qty, price, status, response))
+    conn.commit()
+    return cursor.lastrowid
+
+# Global connection (can be improved with better management)
+_db_conn = None
+
+def get_db_conn():
+    global _db_conn
+    if _db_conn is None:
+        _db_conn = init_db(config.DB_PATH)
+    return _db_conn

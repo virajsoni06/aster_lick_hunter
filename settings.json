@@ -1,0 +1,54 @@
+{
+  "globals": {
+    "volume_window_sec": 60,
+    "simulate_only": true,
+    "db_path": "bot.db"
+  },
+  "symbols": {
+    "BTCUSDT": {
+      "volume_threshold": 1000.0,
+      "leverage": 20,
+      "margin_type": "ISOLATED",
+      "trade_side": "OPPOSITE",
+      "trade_qty": 10,
+      "price_offset_pct": 0.1,
+      "position_side": "BOTH"
+    },
+    "ETHUSDT": {
+      "volume_threshold": 500.0,
+      "leverage": 20,
+      "margin_type": "ISOLATED",
+      "trade_side": "OPPOSITE",
+      "trade_qty": 10,
+      "price_offset_pct": 0.1,
+      "position_side": "BOTH"
+    },
+    "SOLUSDT": {
+      "volume_threshold": 100.0,
+      "leverage": 20,
+      "margin_type": "ISOLATED",
+      "trade_side": "OPPOSITE",
+      "trade_qty": 10,
+      "price_offset_pct": 0.1,
+      "position_side": "BOTH"
+    },
+    "ASTERUSDT": {
+      "volume_threshold": 50.0,
+      "leverage": 20,
+      "margin_type": "ISOLATED",
+      "trade_side": "OPPOSITE",
+      "trade_qty": 10,
+      "price_offset_pct": 0.1,
+      "position_side": "BOTH"
+    },
+    "XRPUSDT": {
+      "volume_threshold": 100.0,
+      "leverage": 20,
+      "margin_type": "ISOLATED",
+      "trade_side": "OPPOSITE",
+      "trade_qty": 10,
+      "price_offset_pct": 0.1,
+      "position_side": "BOTH"
+    }
+  }
+}
