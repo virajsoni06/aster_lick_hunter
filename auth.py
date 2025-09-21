@@ -2,30 +2,48 @@ import requests
 import hmac
 import hashlib
 import time
+import urllib.parse
 from config import config
 
-def add_auth_headers():
-    """Add simple API key header to requests."""
-    return {'X-API-KEY': config.API_KEY}
-
-def sign_request(method, url, params=None, data=None):
-    """Optional HMAC signing if required by Aster DEX endpoints."""
-    timestamp = int(time.time() * 1000)
-    message = f"{method}{url}{timestamp}"  # Example: adjust based on docs if needed
-    signature = hmac.new(config.API_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
-    return timestamp, signature
-
-# Note: Use if Aster requires HMAC for certain endpoints; otherwise, API key header suffices
+def create_signature(query_string, secret):
+    """Create HMAC SHA256 signature."""
+    return hmac.new(secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
 
 def make_authenticated_request(method, url, data=None, params=None):
-    """Make an authenticated request using API key."""
-    headers = add_auth_headers()
-    headers.update({'Content-Type': 'application/json'})
+    """Make an authenticated request using HMAC signature."""
+    timestamp = int(time.time() * 1000)
+
+    # Add timestamp to the parameters
     if method.upper() == 'GET':
+        if params is None:
+            params = {}
+        params['timestamp'] = timestamp
+        query_string = urllib.parse.urlencode(params, doseq=True)
+        signature = create_signature(query_string, config.API_SECRET)
+        params['signature'] = signature
+
+        headers = {'X-MBX-APIKEY': config.API_KEY}
         return requests.get(url, headers=headers, params=params)
-    elif method.upper() == 'POST':
-        return requests.post(url, headers=headers, json=data, params=params)
-    elif method.upper() == 'DELETE':
-        return requests.delete(url, headers=headers, params=params, json=data)
+
+    elif method.upper() in ['POST', 'DELETE']:
+        if data is None:
+            data = {}
+        data['timestamp'] = timestamp
+
+        # Create query string from data for signature
+        query_string = urllib.parse.urlencode(data, doseq=True)
+        signature = create_signature(query_string, config.API_SECRET)
+        data['signature'] = signature
+
+        headers = {
+            'X-MBX-APIKEY': config.API_KEY,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+
+        if method.upper() == 'POST':
+            return requests.post(url, headers=headers, data=data)
+        else:
+            return requests.delete(url, headers=headers, data=data)
+
     else:
         raise ValueError(f"Unsupported method: {method}")

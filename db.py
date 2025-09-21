@@ -15,7 +15,8 @@ def init_db(db_path):
             symbol TEXT NOT NULL,
             side TEXT NOT NULL,
             qty REAL NOT NULL,
-            price REAL NOT NULL
+            price REAL NOT NULL,
+            usdt_value REAL
         )
     ''')
 
