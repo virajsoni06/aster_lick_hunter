@@ -314,11 +314,15 @@ class OrderCleanup:
             for pos in response.json():
                 symbol = pos['symbol']
                 position_amt = float(pos.get('positionAmt', 0))
+                position_side = pos.get('positionSide', 'BOTH')
                 if position_amt != 0:
-                    position_details[symbol] = {
+                    # Use symbol + position_side as key to handle hedge mode
+                    key = f"{symbol}_{position_side}"
+                    position_details[key] = {
+                        'symbol': symbol,
                         'amount': position_amt,
                         'entry_price': float(pos.get('entryPrice', 0)),
-                        'position_side': pos.get('positionSide', 'BOTH'),
+                        'position_side': position_side,
                         'mark_price': float(pos.get('markPrice', 0))
                     }
 
@@ -346,7 +350,8 @@ class OrderCleanup:
             from trader import format_price
 
             # Check each position for missing TP/SL
-            for symbol, pos_detail in position_details.items():
+            for pos_key, pos_detail in position_details.items():
+                symbol = pos_detail['symbol']
                 position_amount = pos_detail['amount']
                 entry_price = pos_detail['entry_price']
                 position_side = pos_detail['position_side']
@@ -369,6 +374,11 @@ class OrderCleanup:
                     order_side_key = 'ANY'
 
                 existing_orders = symbol_orders.get(symbol, {}).get(order_side_key, [])
+
+                # Debug logging for order tracking
+                if symbol in symbol_orders:
+                    logger.debug(f"Orders for {symbol}: {symbol_orders[symbol]}")
+                    logger.debug(f"Checking position side '{order_side_key}' for {symbol}, found orders: {existing_orders}")
 
                 # Check for TP orders
                 has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT']
