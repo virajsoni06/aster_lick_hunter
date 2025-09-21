@@ -225,7 +225,10 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     # Determine position side based on hedge mode
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
     if hedge_mode:
-        # In hedge mode, determine position side based on trade direction
+        # In hedge mode, use the hedge_position_side or determine dynamically
+        position_side = symbol_config.get('hedge_position_side', 'LONG')
+
+        # If trading opposite, we might want to use the opposite position side
         if trade_side_value == 'OPPOSITE':
             # For liquidation hunting in hedge mode:
             # If liquidation was LONG (forced sell), we open SHORT position
@@ -234,12 +237,8 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
                 position_side = 'SHORT'
             else:
                 position_side = 'LONG'
-        else:
-            # Use configured hedge position side
-            position_side = symbol_config.get('hedge_position_side', 'LONG')
     else:
-        # In one-way mode, always use BOTH
-        position_side = 'BOTH'
+        position_side = symbol_config.get('position_side', 'BOTH')
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
     await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
 
@@ -286,7 +285,7 @@ def calculate_sl_price(entry_price, side, sl_pct, position_side=None):
             return entry_price * (1 + (sl_pct / 100.0))
 
 async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1, symbol_config=None):
-    """Place main order and schedule TP/SL for after fill."""
+    """Place orders with optional TP/SL via batch API."""
     # For maker, use limit with price offset
     if order_type == 'LIMIT':
         entry_price = get_limit_price(last_price, side, offset_pct)
@@ -305,249 +304,171 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
         'newOrderRespType': 'RESULT'
     }
 
-    # Store TP/SL parameters for later placement after fill
-    tp_sl_params = None
+    orders = [main_order]
+
+    # Add TP/SL orders if configured
     if symbol_config:
-        tp_sl_params = {
-            'symbol': symbol,
-            'qty': qty,
-            'position_side': position_side,
-            'entry_side': side,
-            'symbol_config': symbol_config,
-            'entry_price': entry_price  # Will be updated with actual fill price
-        }
+        hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
 
-    # Handle simulation mode
-    if config.SIMULATE_ONLY:
-        log.info(f"Simulating main order: {json.dumps(main_order, indent=2)}")
-        main_order_id = f'simulated_main_{int(time.time())}'
-        insert_trade(conn, symbol, main_order_id, side, qty, entry_price, 'SIMULATED',
-                    None, 'LIMIT', None)
+        # Determine actual position side for TP/SL calculation
+        actual_position_side = position_side if hedge_mode and position_side != 'BOTH' else None
 
-        # Simulate TP/SL placement
-        if tp_sl_params:
-            log.info("Would place TP/SL orders after main order fills")
-            await place_tp_sl_orders(main_order_id, entry_price, tp_sl_params)
-        return
+        # Take Profit order
+        if symbol_config.get('take_profit_enabled', False):
+            tp_pct = symbol_config.get('take_profit_pct', 2.0)
+            tp_price = calculate_tp_price(entry_price, side, tp_pct, actual_position_side)
 
-    # Make actual request - place main order only
-    try:
-        response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=main_order)
-        if response.status_code == 200:
-            resp_data = response.json()
-            order_id = str(resp_data.get('orderId', 'unknown'))
-            status = resp_data.get('status', 'NEW')
-            fill_price = float(resp_data.get('avgPrice', entry_price)) if resp_data.get('avgPrice') else entry_price
-
-            log.info(f"Placed main order {order_id}: {symbol} {side} {qty} @ {entry_price}, status: {status}")
-            insert_trade(conn, symbol, order_id, side, qty, entry_price, status,
-                       json.dumps(resp_data), 'LIMIT', None)
-
-            # If order is already filled (FILLED status), place TP/SL immediately
-            if status == 'FILLED' and tp_sl_params:
-                tp_sl_params['entry_price'] = fill_price
-                log.info(f"Main order filled immediately, placing TP/SL orders")
-                await place_tp_sl_orders(order_id, fill_price, tp_sl_params)
-            elif tp_sl_params:
-                # Start monitoring for fill to place TP/SL
-                log.info(f"Main order placed, will place TP/SL after fill")
-                asyncio.create_task(monitor_and_place_tp_sl(order_id, tp_sl_params))
-
-            return order_id
-        else:
-            log.error(f"Order failed: {response.status_code} {response.text}")
-            insert_trade(conn, symbol, 'failed', side, qty, entry_price, 'FAILED',
-                       response.text, 'LIMIT', None)
-            return None
-
-    except Exception as e:
-        log.error(f"Error placing order: {e}")
-        insert_trade(conn, symbol, 'error', side, qty, entry_price, 'ERROR',
-                   str(e), 'LIMIT', None)
-        return None
-
-async def monitor_and_place_tp_sl(order_id, tp_sl_params):
-    """Monitor main order status and place TP/SL when filled."""
-    symbol = tp_sl_params['symbol']
-    max_checks = 60  # Check for 60 seconds max
-    check_interval = 1  # Check every second
-
-    for i in range(max_checks):
-        try:
-            # Check order status
-            response = make_authenticated_request('GET', f"{config.BASE_URL}/fapi/v1/order",
-                                                 params={'symbol': symbol, 'orderId': order_id})
-
-            if response.status_code == 200:
-                order_data = response.json()
-                status = order_data.get('status')
-
-                if status == 'FILLED':
-                    fill_price = float(order_data.get('avgPrice', tp_sl_params['entry_price']))
-                    tp_sl_params['entry_price'] = fill_price
-                    log.info(f"Main order {order_id} filled at {fill_price}, placing TP/SL")
-                    await place_tp_sl_orders(order_id, fill_price, tp_sl_params)
-                    return
-                elif status in ['CANCELED', 'REJECTED', 'EXPIRED']:
-                    log.info(f"Main order {order_id} {status}, not placing TP/SL")
-                    return
-
-            await asyncio.sleep(check_interval)
-
-        except Exception as e:
-            log.error(f"Error monitoring order {order_id}: {e}")
-            await asyncio.sleep(check_interval)
-
-    log.warning(f"Timeout monitoring order {order_id}, TP/SL not placed")
-
-async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
-    """Place TP/SL orders after main order is filled."""
-    symbol = tp_sl_params['symbol']
-    qty = tp_sl_params['qty']
-    position_side = tp_sl_params['position_side']
-    entry_side = tp_sl_params['entry_side']
-    symbol_config = tp_sl_params['symbol_config']
-
-    if not symbol_config:
-        return
-
-    hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
-    actual_position_side = position_side if hedge_mode and position_side != 'BOTH' else None
-
-    tp_sl_orders = []
-
-    # Prepare Take Profit order
-    if symbol_config.get('take_profit_enabled', False):
-        tp_pct = symbol_config.get('take_profit_pct', 2.0)
-        tp_price = calculate_tp_price(fill_price, entry_side, tp_pct, actual_position_side)
-
-        # Determine TP side (opposite of entry for closing)
-        if hedge_mode and position_side != 'BOTH':
-            tp_side = 'SELL' if position_side == 'LONG' else 'BUY'
-        else:
-            tp_side = 'SELL' if entry_side == 'BUY' else 'BUY'
-
-        tp_order = {
-            'symbol': symbol,
-            'side': tp_side,
-            'type': 'TAKE_PROFIT_MARKET',
-            'stopPrice': format_price(symbol, tp_price),
-            'quantity': str(qty),
-            'positionSide': position_side,
-            'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-            'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
-            'reduceOnly': 'true'  # Now safe to use reduceOnly since position exists
-        }
-        tp_sl_orders.append(tp_order)
-        log.info(f"Preparing TP order at {tp_price:.6f} ({tp_pct}% from {fill_price:.6f})")
-
-    # Prepare Stop Loss order
-    if symbol_config.get('stop_loss_enabled', False):
-        sl_pct = symbol_config.get('stop_loss_pct', 1.0)
-
-        if symbol_config.get('use_trailing_stop', False):
-            # Trailing stop
-            callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
-            activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
-
-            # Calculate activation price
-            if actual_position_side == 'LONG':
-                activation_price = fill_price * (1 + activation_pct / 100.0)
-            elif actual_position_side == 'SHORT':
-                activation_price = fill_price * (1 - activation_pct / 100.0)
-            else:
-                # One-way mode
-                if entry_side == 'BUY':
-                    activation_price = fill_price * (1 + activation_pct / 100.0)
-                else:
-                    activation_price = fill_price * (1 - activation_pct / 100.0)
-
-            # Determine SL side
+            # Determine TP side (opposite of entry for closing)
             if hedge_mode and position_side != 'BOTH':
-                sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
+                tp_side = 'SELL' if position_side == 'LONG' else 'BUY'
             else:
-                sl_side = 'SELL' if entry_side == 'BUY' else 'BUY'
+                tp_side = 'SELL' if side == 'BUY' else 'BUY'
 
-            sl_order = {
+            tp_order = {
                 'symbol': symbol,
-                'side': sl_side,
-                'type': 'TRAILING_STOP_MARKET',
-                'quantity': str(qty),
-                'callbackRate': str(callback_rate),
-                'activationPrice': format_price(symbol, activation_price),
-                'positionSide': position_side,
-                'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-                'reduceOnly': 'true'
-            }
-            tp_sl_orders.append(sl_order)
-            log.info(f"Preparing trailing stop with {activation_pct}% activation, {callback_rate}% callback")
-        else:
-            # Fixed stop loss
-            sl_price = calculate_sl_price(fill_price, entry_side, sl_pct, actual_position_side)
-
-            # Determine SL side
-            if hedge_mode and position_side != 'BOTH':
-                sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
-            else:
-                sl_side = 'SELL' if entry_side == 'BUY' else 'BUY'
-
-            sl_order = {
-                'symbol': symbol,
-                'side': sl_side,
-                'type': 'STOP_MARKET',
-                'stopPrice': format_price(symbol, sl_price),
+                'side': tp_side,
+                'type': 'TAKE_PROFIT_MARKET',
+                'stopPrice': format_price(symbol, tp_price),
+                'closePosition': 'false',
                 'quantity': str(qty),
                 'positionSide': position_side,
                 'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
                 'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
-                'reduceOnly': 'true'
+                'reduceOnly': 'false'  # Don't use reduceOnly for initial TP orders
             }
-            tp_sl_orders.append(sl_order)
-            log.info(f"Preparing SL order at {sl_price:.6f} ({sl_pct}% from {fill_price:.6f})")
+            orders.append(tp_order)
+            log.info(f"Adding TP order at {tp_price:.6f} ({tp_pct}% from entry)")
 
-    # Place TP/SL orders
-    if tp_sl_orders:
-        if config.SIMULATE_ONLY:
-            for order in tp_sl_orders:
-                order_type = order['type']
-                order_price = order.get('stopPrice', 'N/A')
-                order_id = f'simulated_{order_type}_{int(time.time())}'
-                log.info(f"Simulating {order_type} order: {json.dumps(order, indent=2)}")
-                insert_trade(conn, symbol, order_id, order['side'], qty, order_price, 'SIMULATED',
-                            None, order_type, main_order_id)
-        else:
-            # Use batch endpoint if multiple orders
-            if len(tp_sl_orders) > 1:
-                batch_data = {'batchOrders': json.dumps(tp_sl_orders)}
-                response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/batchOrders", data=batch_data)
+        # Stop Loss order
+        if symbol_config.get('stop_loss_enabled', False):
+            sl_pct = symbol_config.get('stop_loss_pct', 1.0)
 
-                if response.status_code == 200:
-                    results = response.json()
-                    for i, result in enumerate(results):
-                        if 'orderId' in result:
-                            order_id = str(result['orderId'])
-                            order_type = tp_sl_orders[i]['type']
-                            log.info(f"Placed {order_type} order {order_id}")
-                            insert_trade(conn, symbol, order_id, tp_sl_orders[i]['side'], qty,
-                                       tp_sl_orders[i].get('stopPrice', 'N/A'),
-                                       result.get('status', 'NEW'), json.dumps(result),
-                                       order_type, main_order_id)
-                        else:
-                            log.error(f"TP/SL order {i} failed: {result}")
+            if symbol_config.get('use_trailing_stop', False):
+                # Trailing stop
+                callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
+                activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
+
+                # Calculate activation price (e.g., 0.5% in profit)
+                if hedge_mode and position_side != 'BOTH':
+                    if position_side == 'LONG':
+                        activation_price = entry_price * (1 + activation_pct / 100.0)
+                    else:  # SHORT
+                        activation_price = entry_price * (1 - activation_pct / 100.0)
                 else:
-                    log.error(f"Batch TP/SL order failed: {response.text}")
-            else:
-                # Single TP or SL order
-                for order in tp_sl_orders:
-                    response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=order)
-                    if response.status_code == 200:
-                        resp_data = response.json()
-                        order_id = str(resp_data.get('orderId', 'unknown'))
-                        order_type = order['type']
-                        log.info(f"Placed {order_type} order {order_id}")
-                        insert_trade(conn, symbol, order_id, order['side'], qty,
-                                   order.get('stopPrice', 'N/A'),
-                                   resp_data.get('status', 'NEW'), json.dumps(resp_data),
-                                   order_type, main_order_id)
+                    # One-way mode
+                    if side == 'BUY':
+                        activation_price = entry_price * (1 + activation_pct / 100.0)
                     else:
-                        log.error(f"{order['type']} order failed: {response.text}")
+                        activation_price = entry_price * (1 - activation_pct / 100.0)
+
+                # Determine SL side (opposite of entry for closing)
+                if hedge_mode and position_side != 'BOTH':
+                    sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
+                else:
+                    sl_side = 'SELL' if side == 'BUY' else 'BUY'
+
+                sl_order = {
+                    'symbol': symbol,
+                    'side': sl_side,
+                    'type': 'TRAILING_STOP_MARKET',
+                    'quantity': str(qty),
+                    'callbackRate': str(callback_rate),
+                    'activationPrice': format_price(symbol, activation_price),
+                    'positionSide': position_side,
+                    'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE')
+                }
+                orders.append(sl_order)
+                log.info(f"Adding trailing stop with {activation_pct}% activation, {callback_rate}% callback")
+            else:
+                # Fixed stop loss
+                sl_price = calculate_sl_price(entry_price, side, sl_pct, actual_position_side)
+
+                # Determine SL side (opposite of entry for closing)
+                if hedge_mode and position_side != 'BOTH':
+                    sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
+                else:
+                    sl_side = 'SELL' if side == 'BUY' else 'BUY'
+
+                sl_order = {
+                    'symbol': symbol,
+                    'side': sl_side,
+                    'type': 'STOP_MARKET',
+                    'stopPrice': format_price(symbol, sl_price),
+                    'closePosition': 'false',
+                    'quantity': str(qty),
+                    'positionSide': position_side,
+                    'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
+                    'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
+                    'reduceOnly': 'false'  # Don't use reduceOnly for initial SL orders
+                }
+                orders.append(sl_order)
+                log.info(f"Adding SL order at {sl_price:.6f} ({sl_pct}% from entry)")
+
+    # Handle simulation mode
+    if config.SIMULATE_ONLY:
+        log.info(f"Simulating batch orders: {json.dumps(orders, indent=2)}")
+        # Insert simulated trades
+        main_order_id = f'simulated_main_{int(time.time())}'
+        for i, order in enumerate(orders):
+            order_type = order['type']
+            order_price = order.get('price', order.get('stopPrice', 'N/A'))
+            order_id = main_order_id if i == 0 else f'simulated_{order_type}_{i}'
+            parent_id = None if i == 0 else main_order_id
+            insert_trade(conn, symbol, order_id, order['side'], qty, order_price, 'SIMULATED',
+                        None, order_type, parent_id)
+        return
+
+    # Make actual request
+    try:
+        # Use batch endpoint if multiple orders, single endpoint otherwise
+        if len(orders) > 1:
+            batch_data = {
+                'batchOrders': json.dumps(orders)
+            }
+            response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/batchOrders", data=batch_data)
+
+            if response.status_code == 200:
+                results = response.json()
+                main_order_id = None
+                for i, result in enumerate(results):
+                    if 'orderId' in result:
+                        order_id = str(result['orderId'])
+                        status = result.get('status', 'NEW')
+                        order_type = orders[i]['type']
+
+                        # First order is the main order
+                        if i == 0:
+                            main_order_id = order_id
+
+                        parent_id = None if i == 0 else main_order_id
+                        log.info(f"Placed {order_type} order {order_id}: {symbol}")
+                        insert_trade(conn, symbol, order_id, orders[i]['side'], qty,
+                                   orders[i].get('price', orders[i].get('stopPrice', 'N/A')),
+                                   status, json.dumps(result), order_type, parent_id)
+                    else:
+                        log.error(f"Order {i} failed: {result}")
+                        parent_id = None if i == 0 else main_order_id
+                        insert_trade(conn, symbol, f'failed_{i}', orders[i]['side'], qty,
+                                   orders[i].get('price', orders[i].get('stopPrice', 'N/A')),
+                                   'FAILED', json.dumps(result), orders[i]['type'], parent_id)
+            else:
+                log.error(f"Batch order failed: {response.status_code} {response.text}")
+                insert_trade(conn, symbol, 'batch_failed', side, qty, entry_price, 'FAILED', response.text, 'LIMIT')
+        else:
+            # Single order
+            response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=main_order)
+            if response.status_code == 200:
+                resp_data = response.json()
+                order_id = resp_data.get('orderId', 'unknown')
+                status = resp_data.get('status', 'NEW')
+                log.info(f"Placed order {order_id}: {symbol} {side} {qty} @ {entry_price}")
+                insert_trade(conn, symbol, str(order_id), side, qty, entry_price, status,
+                           response.text, 'LIMIT')
+            else:
+                log.error(f"Order failed: {response.status_code} {response.text}")
+                insert_trade(conn, symbol, 'failed', side, qty, entry_price, 'FAILED',
+                           response.text, 'LIMIT')
+    except Exception as e:
+        log.error(f"Error placing order: {e}")
+        insert_trade(conn, symbol, 'error', side, qty, entry_price, 'ERROR',
+                   str(e), 'LIMIT')

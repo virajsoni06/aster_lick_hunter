@@ -225,7 +225,10 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     # Determine position side based on hedge mode
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
     if hedge_mode:
-        # In hedge mode, determine position side based on trade direction
+        # In hedge mode, use the hedge_position_side or determine dynamically
+        position_side = symbol_config.get('hedge_position_side', 'LONG')
+
+        # If trading opposite, we might want to use the opposite position side
         if trade_side_value == 'OPPOSITE':
             # For liquidation hunting in hedge mode:
             # If liquidation was LONG (forced sell), we open SHORT position
@@ -234,12 +237,8 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
                 position_side = 'SHORT'
             else:
                 position_side = 'LONG'
-        else:
-            # Use configured hedge position side
-            position_side = symbol_config.get('hedge_position_side', 'LONG')
     else:
-        # In one-way mode, always use BOTH
-        position_side = 'BOTH'
+        position_side = symbol_config.get('position_side', 'BOTH')
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
     await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
 
