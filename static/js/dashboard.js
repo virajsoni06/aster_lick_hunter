@@ -23,6 +23,9 @@ class Dashboard {
 
         // Initialize charts
         this.initCharts();
+
+        // Load PNL data
+        await this.loadPNLData();
     }
 
     setupEventListeners() {
@@ -46,6 +49,12 @@ class Dashboard {
         document.getElementById('fetch-symbols-btn').addEventListener('click', () => this.fetchAvailableSymbols());
         document.getElementById('remove-symbol-btn').addEventListener('click', () => this.removeSymbol());
         document.getElementById('symbol-search').addEventListener('input', (e) => this.filterSymbols(e.target.value));
+
+        // PNL sync button
+        const syncBtn = document.getElementById('sync-pnl-btn');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', () => this.syncPNLData());
+        }
     }
 
     connectSSE() {
@@ -471,10 +480,206 @@ class Dashboard {
         });
     }
 
-    initCharts() {
-        const ctx = document.getElementById('volume-chart').getContext('2d');
+    async loadPNLData() {
+        try {
+            // Load PNL stats
+            const response = await axios.get('/api/pnl/stats?days=7');
+            const data = response.data;
 
-        this.volumeChart = new Chart(ctx, {
+            if (data.summary) {
+                // Update PNL summary
+                this.updateElement('total-pnl', this.formatCurrency(data.summary.total_pnl), data.summary.total_pnl);
+                this.updateElement('realized-pnl', this.formatCurrency(data.summary.total_realized_pnl), data.summary.total_realized_pnl);
+                this.updateElement('win-rate', data.summary.win_rate.toFixed(1) + '%');
+                this.updateElement('pnl-trades', data.summary.total_trades);
+            }
+
+            // Update PNL chart
+            if (data.daily_stats && this.pnlChart) {
+                this.updatePNLChart(data.daily_stats);
+            }
+
+            // Load symbol performance
+            await this.loadSymbolPerformance();
+        } catch (error) {
+            console.error('Error loading PNL data:', error);
+        }
+    }
+
+    async loadSymbolPerformance() {
+        try {
+            const response = await axios.get('/api/pnl/symbols?days=7');
+            const performance = response.data;
+
+            const tbody = document.getElementById('symbol-performance-tbody');
+            const noData = document.getElementById('no-performance');
+
+            if (!tbody) return;
+
+            tbody.innerHTML = '';
+
+            if (performance.length === 0) {
+                if (noData) noData.style.display = 'block';
+                document.getElementById('symbol-performance-table').style.display = 'none';
+            } else {
+                if (noData) noData.style.display = 'none';
+                document.getElementById('symbol-performance-table').style.display = 'table';
+
+                performance.forEach(perf => {
+                    const row = this.createSymbolPerformanceRow(perf);
+                    tbody.appendChild(row);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading symbol performance:', error);
+        }
+    }
+
+    createSymbolPerformanceRow(perf) {
+        const row = document.createElement('tr');
+        const pnlClass = perf.total_pnl >= 0 ? 'positive' : 'negative';
+
+        row.innerHTML = `
+            <td>${perf.symbol}</td>
+            <td class="${pnlClass}">${this.formatCurrency(perf.total_pnl)}</td>
+            <td class="${perf.realized_pnl >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(perf.realized_pnl)}</td>
+            <td class="negative">${this.formatCurrency(perf.commissions)}</td>
+            <td>${perf.total_trades}</td>
+            <td class="${perf.win_rate >= 50 ? 'positive' : 'negative'}">${perf.win_rate.toFixed(1)}%</td>
+        `;
+        return row;
+    }
+
+    async syncPNLData() {
+        const btn = document.getElementById('sync-pnl-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Syncing...';
+        }
+
+        try {
+            const response = await axios.post('/api/pnl/sync', { hours: 168 }); // Sync 7 days
+
+            if (response.data.success) {
+                this.showToast(response.data.message, 'success');
+                // Reload PNL data
+                await this.loadPNLData();
+            } else {
+                this.showToast('Failed to sync PNL data', 'error');
+            }
+        } catch (error) {
+            console.error('Error syncing PNL:', error);
+            this.showToast('Error syncing PNL data', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Sync PNL Data';
+            }
+        }
+    }
+
+    updatePNLChart(dailyStats) {
+        if (!this.pnlChart || !dailyStats) return;
+
+        // Sort by date
+        dailyStats.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        const labels = dailyStats.map(d => {
+            const date = new Date(d.date);
+            return (date.getMonth() + 1) + '/' + date.getDate();
+        });
+
+        const pnlData = dailyStats.map(d => d.total_pnl || 0);
+        const realizedData = dailyStats.map(d => d.realized_pnl || 0);
+
+        this.pnlChart.data.labels = labels;
+        this.pnlChart.data.datasets = [
+            {
+                label: 'Total PNL',
+                data: pnlData,
+                borderColor: 'rgba(59, 130, 246, 1)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderWidth: 2,
+                tension: 0.1
+            },
+            {
+                label: 'Realized PNL',
+                data: realizedData,
+                borderColor: 'rgba(34, 197, 94, 1)',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                borderWidth: 2,
+                tension: 0.1
+            }
+        ];
+        this.pnlChart.update();
+    }
+
+    initCharts() {
+        // Volume chart (removed since we deleted that section)
+
+        // PNL chart
+        const pnlCtx = document.getElementById('pnl-chart')?.getContext('2d');
+        if (pnlCtx) {
+            this.pnlChart = new Chart(pnlCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += '$' + context.parsed.y.toFixed(2);
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#a1a1aa'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#a1a1aa',
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Old volume chart code (kept for compatibility if needed later)
+        const ctx = document.getElementById('volume-chart')?.getContext('2d');
+        if (ctx) {
+            this.volumeChart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: [],
@@ -517,6 +722,7 @@ class Dashboard {
                 }
             }
         });
+        }
     }
 
     updateVolumeChart(hourlyData) {

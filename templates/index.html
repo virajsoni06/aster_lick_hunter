@@ -47,6 +47,30 @@
                 </div>
             </div>
 
+            <!-- PNL Summary -->
+            <div class="card pnl-summary">
+                <h2>PNL Summary (7 Days)</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <label>Total PNL</label>
+                        <span id="total-pnl" class="stat-value">$0.00</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Realized PNL</label>
+                        <span id="realized-pnl" class="stat-value">$0.00</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Win Rate</label>
+                        <span id="win-rate" class="stat-value">0%</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Total Trades</label>
+                        <span id="pnl-trades" class="stat-value">0</span>
+                    </div>
+                </div>
+                <button id="sync-pnl-btn" class="btn btn-primary" style="margin-top: 10px;">Sync PNL Data</button>
+            </div>
+
             <!-- Trading Statistics -->
             <div class="card trading-stats">
                 <h2>Trading Statistics (24h)</h2>
@@ -93,6 +117,35 @@
                     </table>
                     <div id="no-positions" class="no-data">No active positions</div>
                 </div>
+            </div>
+
+            <!-- Symbol Performance -->
+            <div class="card symbol-performance">
+                <h2>Symbol Performance (7 Days)</h2>
+                <div class="table-container">
+                    <table id="symbol-performance-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Total PNL</th>
+                                <th>Realized PNL</th>
+                                <th>Fees</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="symbol-performance-tbody">
+                            <!-- Symbol performance will be populated here -->
+                        </tbody>
+                    </table>
+                    <div id="no-performance" class="no-data">No performance data available</div>
+                </div>
+            </div>
+
+            <!-- PNL Chart -->
+            <div class="card chart-container">
+                <h2>Daily PNL (7 Days)</h2>
+                <canvas id="pnl-chart"></canvas>
             </div>
 
             <!-- Recent Liquidations -->
