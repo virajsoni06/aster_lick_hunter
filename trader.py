@@ -534,6 +534,11 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
     if not symbol_config:
         return
 
+    # Add a small delay to ensure position is established on exchange
+    # This helps prevent race conditions where TP/SL are placed before position registers
+    await asyncio.sleep(2)
+    log.info(f"Placing TP/SL orders for {symbol} after position establishment delay")
+
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
     actual_position_side = position_side if hedge_mode and position_side != 'BOTH' else None
 
@@ -722,3 +727,34 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
             if tp_order_id or sl_order_id:
                 insert_order_relationship(conn, main_order_id, symbol, position_side, tp_order_id, sl_order_id)
                 log.info(f"Stored order relationship: main={main_order_id}, tp={tp_order_id}, sl={sl_order_id}")
+
+                # Verify orders were placed successfully
+                await asyncio.sleep(1)  # Small delay to ensure orders register
+                verification_attempts = 3
+
+                for attempt in range(verification_attempts):
+                    try:
+                        # Check if orders exist on exchange
+                        open_orders_response = make_authenticated_request('GET', f"{config.BASE_URL}/fapi/v1/openOrders", {'symbol': symbol})
+                        if open_orders_response.status_code == 200:
+                            open_order_ids = [str(o['orderId']) for o in open_orders_response.json()]
+
+                            tp_exists = tp_order_id in open_order_ids if tp_order_id else True
+                            sl_exists = sl_order_id in open_order_ids if sl_order_id else True
+
+                            if tp_exists and sl_exists:
+                                log.info(f"Verified TP/SL orders for {symbol} exist on exchange")
+                                break
+                            else:
+                                if not tp_exists and tp_order_id:
+                                    log.warning(f"TP order {tp_order_id} not found on exchange")
+                                if not sl_exists and sl_order_id:
+                                    log.warning(f"SL order {sl_order_id} not found on exchange")
+
+                                if attempt < verification_attempts - 1:
+                                    log.info(f"Retrying verification in 2 seconds... (attempt {attempt + 1}/{verification_attempts})")
+                                    await asyncio.sleep(2)
+                                else:
+                                    log.error(f"Failed to verify TP/SL orders after {verification_attempts} attempts")
+                    except Exception as e:
+                        log.error(f"Error verifying TP/SL orders: {e}")

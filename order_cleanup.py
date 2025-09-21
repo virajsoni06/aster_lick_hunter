@@ -84,16 +84,44 @@ class OrderCleanup:
                 for pos in response.json():
                     symbol = pos['symbol']
                     position_amt = float(pos.get('positionAmt', 0))
+                    position_side = pos.get('positionSide', 'BOTH')
 
-                    # Only track positions with actual size
-                    if position_amt != 0:
-                        positions[symbol] = {
-                            'amount': position_amt,
-                            'side': 'LONG' if position_amt > 0 else 'SHORT',
-                            'positionSide': pos.get('positionSide', 'BOTH')
-                        }
+                    # In hedge mode, we need to track positions even with 0 amount
+                    # because positions exist for both LONG and SHORT sides
+                    if config.GLOBAL_SETTINGS.get('hedge_mode', False):
+                        # In hedge mode, track all positions with defined sides
+                        if position_side in ['LONG', 'SHORT']:
+                            # Store position info even if amount is 0
+                            positions[symbol] = positions.get(symbol, {})
 
-                logger.debug(f"Found {len(positions)} active positions")
+                            # For hedge mode, we need to track each side separately
+                            side_key = f"{symbol}_{position_side}"
+                            positions[side_key] = {
+                                'amount': position_amt,
+                                'side': position_side,
+                                'positionSide': position_side,
+                                'has_position': position_amt != 0
+                            }
+
+                            # Also keep a combined entry for the symbol
+                            if position_amt != 0:
+                                positions[symbol] = {
+                                    'amount': position_amt,
+                                    'side': position_side,
+                                    'positionSide': position_side,
+                                    'has_position': True
+                                }
+                    else:
+                        # One-way mode: only track positions with actual size
+                        if position_amt != 0:
+                            positions[symbol] = {
+                                'amount': position_amt,
+                                'side': 'LONG' if position_amt > 0 else 'SHORT',
+                                'positionSide': position_side,
+                                'has_position': True
+                            }
+
+                logger.debug(f"Found {len(positions)} position entries (hedge_mode={'on' if config.GLOBAL_SETTINGS.get('hedge_mode', False) else 'off'})")
                 return positions
             else:
                 logger.error(f"Failed to get positions: {response.text}")
@@ -149,6 +177,7 @@ class OrderCleanup:
         """
         canceled_count = 0
         all_orders = await self.get_open_orders()
+        current_time = time.time() * 1000  # Convert to milliseconds
 
         for order in all_orders:
             order_type = order.get('type', '')
@@ -156,6 +185,10 @@ class OrderCleanup:
             order_id = str(order['orderId'])
             position_side = order.get('positionSide', 'BOTH')
             reduce_only = order.get('reduceOnly', False)
+            order_time = order.get('time', 0)
+
+            # Calculate order age in seconds
+            order_age_seconds = (current_time - order_time) / 1000 if order_time else float('inf')
 
             # Check if this is a TP/SL/STOP order
             is_tp_sl = order_type in [
@@ -168,25 +201,56 @@ class OrderCleanup:
             ] or reduce_only
 
             if is_tp_sl:
-                # Check if there's a matching position
-                position = positions.get(symbol)
+                # IMPORTANT: Don't cancel orders younger than 60 seconds
+                # This prevents race conditions where positions haven't registered yet
+                if order_age_seconds < 60:
+                    logger.debug(f"Skipping young {order_type} order {order_id} for {symbol} (age: {order_age_seconds:.1f}s)")
+                    continue
 
+                # Check if there's a matching position
                 should_cancel = False
 
-                if not position:
-                    # No position at all - cancel the order
-                    should_cancel = True
-                    logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position")
-                elif position_side != 'BOTH':
-                    # Hedge mode - check if position side matches
-                    if position_side == 'LONG' and position['side'] != 'LONG':
+                if config.GLOBAL_SETTINGS.get('hedge_mode', False):
+                    # In hedge mode, check specific position side
+                    if position_side in ['LONG', 'SHORT']:
+                        # Look for side-specific position
+                        side_key = f"{symbol}_{position_side}"
+                        side_position = positions.get(side_key)
+
+                        if not side_position or not side_position.get('has_position', False):
+                            # No position for this specific side
+                            should_cancel = True
+                            logger.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
+                    else:
+                        # BOTH position side in hedge mode - check if any position exists
+                        position = positions.get(symbol)
+                        if not position or not position.get('has_position', False):
+                            should_cancel = True
+                            logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                else:
+                    # One-way mode
+                    position = positions.get(symbol)
+                    if not position or not position.get('has_position', False):
                         should_cancel = True
-                        logger.warning(f"Found orphaned LONG {order_type} order {order_id} for {symbol} with no LONG position")
-                    elif position_side == 'SHORT' and position['side'] != 'SHORT':
-                        should_cancel = True
-                        logger.warning(f"Found orphaned SHORT {order_type} order {order_id} for {symbol} with no SHORT position")
+                        logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
 
                 if should_cancel:
+                    # Additional safety check: Query database for recent main orders
+                    # Don't cancel if there was a recently filled main order
+                    cursor = self.db.cursor()
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM trades
+                        WHERE symbol = ?
+                        AND order_type = 'LIMIT'
+                        AND status = 'FILLED'
+                        AND timestamp > ?
+                    """, (symbol, current_time - 300000))  # Last 5 minutes
+
+                    recent_fills = cursor.fetchone()[0]
+                    if recent_fills > 0:
+                        logger.info(f"Skipping cancellation of {order_type} order {order_id} - found recent fills for {symbol}")
+                        continue
+
                     if await self.cancel_order(symbol, order_id):
                         canceled_count += 1
 
@@ -226,6 +290,227 @@ class OrderCleanup:
             logger.info(f"Canceled {canceled_count} stale limit orders")
 
         return canceled_count
+
+    async def check_and_repair_position_protection(self) -> int:
+        """
+        Check all open positions have proper TP/SL orders and place missing ones.
+
+        Returns:
+            Number of missing orders repaired
+        """
+        repaired_count = 0
+
+        try:
+            # Get all positions with full info including entry price
+            from config import config as cfg
+            url = f"{cfg.BASE_URL}/fapi/v2/positionRisk"
+            response = make_authenticated_request('GET', url)
+
+            if response.status_code != 200:
+                logger.error(f"Failed to get position details: {response.text}")
+                return 0
+
+            position_details = {}
+            for pos in response.json():
+                symbol = pos['symbol']
+                position_amt = float(pos.get('positionAmt', 0))
+                if position_amt != 0:
+                    position_details[symbol] = {
+                        'amount': position_amt,
+                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'position_side': pos.get('positionSide', 'BOTH'),
+                        'mark_price': float(pos.get('markPrice', 0))
+                    }
+
+            # Get all open orders
+            all_orders = await self.get_open_orders()
+
+            # Build a map of symbol -> order types
+            symbol_orders = {}
+            for order in all_orders:
+                symbol = order['symbol']
+                order_type = order.get('type', '')
+                position_side = order.get('positionSide', 'BOTH')
+
+                if symbol not in symbol_orders:
+                    symbol_orders[symbol] = {}
+
+                # Track orders by position side
+                side_key = position_side if position_side != 'BOTH' else 'ANY'
+                if side_key not in symbol_orders[symbol]:
+                    symbol_orders[symbol][side_key] = []
+
+                symbol_orders[symbol][side_key].append(order_type)
+
+            # Check each position for missing TP/SL
+            for symbol, pos_detail in position_details.items():
+                position_amount = pos_detail['amount']
+                entry_price = pos_detail['entry_price']
+                position_side = pos_detail['position_side']
+
+                if entry_price == 0:
+                    logger.warning(f"Position {symbol} has no entry price, skipping protection")
+                    continue
+
+                # Get symbol configuration
+                symbol_config = cfg.SYMBOL_SETTINGS.get(symbol, {})
+
+                if not symbol_config:
+                    logger.debug(f"No configuration for {symbol}, skipping protection check")
+                    continue
+
+                # Determine which side key to check for orders
+                if cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
+                    order_side_key = position_side if position_side != 'BOTH' else 'ANY'
+                else:
+                    order_side_key = 'ANY'
+
+                existing_orders = symbol_orders.get(symbol, {}).get(order_side_key, [])
+
+                # Check for TP orders
+                has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT']
+                            for order_type in existing_orders)
+
+                # Check for SL orders (including trailing stops)
+                has_sl = any(order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS', 'TRAILING_STOP_MARKET']
+                            for order_type in existing_orders)
+
+                orders_to_place = []
+
+                # Prepare TP order if missing
+                if symbol_config.get('take_profit_enabled', False) and not has_tp:
+                    logger.warning(f"Position {symbol} {position_side} missing TP order! Amount: {position_amount}, Entry: {entry_price}")
+
+                    # Calculate TP price
+                    tp_pct = symbol_config.get('take_profit_pct', 2.0)
+                    if position_amount > 0:  # LONG position
+                        tp_price = entry_price * (1 + tp_pct / 100.0)
+                        tp_side = 'SELL'
+                    else:  # SHORT position
+                        tp_price = entry_price * (1 - tp_pct / 100.0)
+                        tp_side = 'BUY'
+
+                    # Format price properly for the symbol
+                    from trader import format_price
+                    formatted_tp_price = format_price(symbol, tp_price)
+
+                    tp_order = {
+                        'symbol': symbol,
+                        'side': tp_side,
+                        'type': 'TAKE_PROFIT_MARKET',
+                        'stopPrice': formatted_tp_price,
+                        'quantity': str(abs(position_amount)),
+                        'positionSide': position_side
+                    }
+
+                    if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
+                        tp_order['reduceOnly'] = 'true'
+
+                    orders_to_place.append(tp_order)
+                    logger.info(f"Will place recovery TP order for {symbol} at {tp_price}")
+
+                # Prepare SL order if missing
+                if symbol_config.get('stop_loss_enabled', False) and not has_sl:
+                    logger.warning(f"Position {symbol} {position_side} missing SL order! Amount: {position_amount}, Entry: {entry_price}")
+
+                    # Check if should use trailing stop
+                    if symbol_config.get('use_trailing_stop', False):
+                        # Trailing stop
+                        callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
+                        activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
+
+                        if position_amount > 0:  # LONG position
+                            activation_price = entry_price * (1 + activation_pct / 100.0)
+                            sl_side = 'SELL'
+                        else:  # SHORT position
+                            activation_price = entry_price * (1 - activation_pct / 100.0)
+                            sl_side = 'BUY'
+
+                        # Format activation price properly
+                        formatted_activation_price = format_price(symbol, activation_price)
+
+                        sl_order = {
+                            'symbol': symbol,
+                            'side': sl_side,
+                            'type': 'TRAILING_STOP_MARKET',
+                            'quantity': str(abs(position_amount)),
+                            'callbackRate': str(callback_rate),
+                            'activationPrice': formatted_activation_price,
+                            'positionSide': position_side
+                        }
+                        logger.info(f"Will place recovery trailing stop for {symbol}, activation at {formatted_activation_price}")
+                    else:
+                        # Fixed stop loss
+                        sl_pct = symbol_config.get('stop_loss_pct', 5.0)
+                        if position_amount > 0:  # LONG position
+                            sl_price = entry_price * (1 - sl_pct / 100.0)
+                            sl_side = 'SELL'
+                        else:  # SHORT position
+                            sl_price = entry_price * (1 + sl_pct / 100.0)
+                            sl_side = 'BUY'
+
+                        # Format stop price properly
+                        formatted_sl_price = format_price(symbol, sl_price)
+
+                        sl_order = {
+                            'symbol': symbol,
+                            'side': sl_side,
+                            'type': 'STOP_MARKET',
+                            'stopPrice': formatted_sl_price,
+                            'quantity': str(abs(position_amount)),
+                            'positionSide': position_side
+                        }
+                        logger.info(f"Will place recovery SL order for {symbol} at {formatted_sl_price}")
+
+                    if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
+                        sl_order['reduceOnly'] = 'true'
+
+                    orders_to_place.append(sl_order)
+
+                # Place the missing orders
+                if orders_to_place and not cfg.SIMULATE_ONLY:
+                    if len(orders_to_place) > 1:
+                        # Use batch endpoint
+                        import json
+                        batch_data = {'batchOrders': json.dumps(orders_to_place)}
+                        resp = make_authenticated_request('POST', f"{cfg.BASE_URL}/fapi/v1/batchOrders", data=batch_data)
+
+                        if resp.status_code == 200:
+                            results = resp.json()
+                            for i, result in enumerate(results):
+                                if 'orderId' in result:
+                                    logger.info(f"Successfully placed recovery {orders_to_place[i]['type']} order {result['orderId']} for {symbol}")
+                                    repaired_count += 1
+                                else:
+                                    logger.error(f"Failed to place recovery order: {result}")
+                        else:
+                            logger.error(f"Failed to place recovery orders: {resp.text}")
+                    else:
+                        # Single order
+                        for order in orders_to_place:
+                            resp = make_authenticated_request('POST', f"{cfg.BASE_URL}/fapi/v1/order", data=order)
+                            if resp.status_code == 200:
+                                result = resp.json()
+                                logger.info(f"Successfully placed recovery {order['type']} order {result.get('orderId')} for {symbol}")
+                                repaired_count += 1
+                            else:
+                                logger.error(f"Failed to place recovery order: {resp.text}")
+                elif orders_to_place and cfg.SIMULATE_ONLY:
+                    logger.info(f"SIMULATE: Would place {len(orders_to_place)} recovery orders for {symbol}")
+                    repaired_count += len(orders_to_place)
+
+            if repaired_count > 0:
+                logger.info(f"Repaired {repaired_count} missing TP/SL orders")
+            else:
+                logger.debug("All positions have proper TP/SL protection")
+
+            return repaired_count
+
+        except Exception as e:
+            logger.error(f"Error checking position protection: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return 0
 
     async def cleanup_on_position_close(self, symbol: str) -> int:
         """
@@ -282,20 +567,27 @@ class OrderCleanup:
             orphaned_canceled = await self.cleanup_orphaned_tp_sl(positions)
             stale_canceled = await self.cleanup_stale_limit_orders()
 
+            # Check and repair missing TP/SL orders
+            missing_protection = await self.check_and_repair_position_protection()
+
             total_canceled = orphaned_canceled + stale_canceled
 
             if total_canceled > 0:
                 logger.info(f"Cleanup cycle complete: {total_canceled} orders canceled")
 
+            if missing_protection > 0:
+                logger.warning(f"Position protection check: {missing_protection} positions missing TP/SL orders")
+
             return {
                 'orphaned_tp_sl': orphaned_canceled,
                 'stale_limits': stale_canceled,
+                'missing_protection': missing_protection,
                 'total': total_canceled
             }
 
         except Exception as e:
             logger.error(f"Error in cleanup cycle: {e}")
-            return {'orphaned_tp_sl': 0, 'stale_limits': 0, 'total': 0}
+            return {'orphaned_tp_sl': 0, 'stale_limits': 0, 'missing_protection': 0, 'total': 0}
 
     async def cleanup_loop(self) -> None:
         """
