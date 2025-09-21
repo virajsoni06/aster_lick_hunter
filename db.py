@@ -55,6 +55,40 @@ def init_db(db_path):
         )
     ''')
 
+    # Create order_status table for tracking order lifecycle
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS order_status (
+            order_id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            price REAL NOT NULL,
+            position_side TEXT DEFAULT 'BOTH',
+            status TEXT NOT NULL,
+            time_placed INTEGER NOT NULL,
+            time_updated INTEGER NOT NULL,
+            time_filled INTEGER,
+            time_canceled INTEGER,
+            filled_qty REAL DEFAULT 0
+        )
+    ''')
+
+    # Create positions table for current position tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS positions (
+            symbol TEXT PRIMARY KEY,
+            side TEXT NOT NULL,  -- LONG or SHORT
+            quantity REAL NOT NULL,
+            entry_price REAL NOT NULL,
+            current_price REAL NOT NULL,
+            position_value_usdt REAL NOT NULL,
+            unrealized_pnl REAL DEFAULT 0,
+            margin_used REAL DEFAULT 0,
+            leverage INTEGER DEFAULT 1,
+            last_updated INTEGER NOT NULL
+        )
+    ''')
+
     # Add new columns to existing tables (migration for existing databases)
     # Check if columns exist before adding them
     cursor.execute("PRAGMA table_info(trades)")
@@ -78,6 +112,8 @@ def init_db(db_path):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_exchange_trade_id ON trades (exchange_trade_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_relationships_main ON order_relationships (main_order_id);')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_relationships_symbol ON order_relationships (symbol);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_status_symbol ON order_status (symbol);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_status_status ON order_status (status);')
 
     conn.commit()
     return conn
@@ -226,3 +262,132 @@ def get_db_conn():
     if _db_conn is None:
         _db_conn = init_db(config.DB_PATH)
     return _db_conn
+
+def insert_order_status(conn, order_id, symbol, side, quantity, price, position_side, status):
+    """Insert or update order status tracking."""
+    timestamp = int(time.time() * 1000)
+    cursor = conn.cursor()
+
+    # Try to update existing order
+    cursor.execute('''
+        UPDATE order_status
+        SET status = ?, time_updated = ?
+        WHERE order_id = ?
+    ''', (status, timestamp, order_id))
+
+    if cursor.rowcount == 0:
+        # Insert new order
+        cursor.execute('''
+            INSERT INTO order_status (order_id, symbol, side, quantity, price, position_side, status, time_placed, time_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (order_id, symbol, side, quantity, price, position_side, status, timestamp, timestamp))
+
+    conn.commit()
+    return cursor.rowcount
+
+def update_order_filled(conn, order_id, filled_qty):
+    """Update order status when filled."""
+    timestamp = int(time.time() * 1000)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE order_status
+        SET status = 'FILLED', filled_qty = ?, time_filled = ?, time_updated = ?
+        WHERE order_id = ?
+    ''', (filled_qty, timestamp, timestamp, order_id))
+    conn.commit()
+    return cursor.rowcount
+
+def update_order_canceled(conn, order_id):
+    """Update order status when canceled."""
+    timestamp = int(time.time() * 1000)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE order_status
+        SET status = 'CANCELED', time_canceled = ?, time_updated = ?
+        WHERE order_id = ?
+    ''', (timestamp, timestamp, order_id))
+    conn.commit()
+    return cursor.rowcount
+
+def get_active_orders(conn, symbol=None):
+    """Get active orders, optionally filtered by symbol."""
+    cursor = conn.cursor()
+    if symbol:
+        cursor.execute('''
+            SELECT order_id, symbol, side, quantity, price, position_side, status, time_placed
+            FROM order_status
+            WHERE symbol = ? AND status NOT IN ('FILLED', 'CANCELED', 'REJECTED', 'EXPIRED')
+            ORDER BY time_placed DESC
+        ''', (symbol,))
+    else:
+        cursor.execute('''
+            SELECT order_id, symbol, side, quantity, price, position_side, status, time_placed
+            FROM order_status
+            WHERE status NOT IN ('FILLED', 'CANCELED', 'REJECTED', 'EXPIRED')
+            ORDER BY time_placed DESC
+        ''')
+    return cursor.fetchall()
+
+def insert_or_update_position(conn, symbol, side, quantity, entry_price, current_price, leverage=1):
+    """Insert or update position tracking."""
+    timestamp = int(time.time() * 1000)
+    position_value_usdt = quantity * current_price
+
+    # Calculate unrealized PnL
+    if side == 'LONG':
+        unrealized_pnl = (current_price - entry_price) * quantity
+    else:  # SHORT
+        unrealized_pnl = (entry_price - current_price) * quantity
+
+    margin_used = position_value_usdt / leverage if leverage > 0 else position_value_usdt
+
+    cursor = conn.cursor()
+
+    # Try to update existing position
+    cursor.execute('''
+        UPDATE positions
+        SET quantity = ?, current_price = ?, position_value_usdt = ?,
+            unrealized_pnl = ?, margin_used = ?, last_updated = ?
+        WHERE symbol = ?
+    ''', (quantity, current_price, position_value_usdt, unrealized_pnl, margin_used, timestamp, symbol))
+
+    if cursor.rowcount == 0:
+        # Insert new position
+        cursor.execute('''
+            INSERT INTO positions (symbol, side, quantity, entry_price, current_price,
+                                  position_value_usdt, unrealized_pnl, margin_used, leverage, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (symbol, side, quantity, entry_price, current_price, position_value_usdt,
+              unrealized_pnl, margin_used, leverage, timestamp))
+
+    conn.commit()
+    return cursor.rowcount
+
+def get_position(conn, symbol):
+    """Get position for a specific symbol."""
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT symbol, side, quantity, entry_price, current_price,
+               position_value_usdt, unrealized_pnl, margin_used, leverage
+        FROM positions
+        WHERE symbol = ?
+    ''', (symbol,))
+    return cursor.fetchone()
+
+def get_all_positions(conn):
+    """Get all current positions."""
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT symbol, side, quantity, entry_price, current_price,
+               position_value_usdt, unrealized_pnl, margin_used, leverage
+        FROM positions
+        ORDER BY position_value_usdt DESC
+    ''')
+    return cursor.fetchall()
+
+def delete_position(conn, symbol):
+    """Remove a position from tracking."""
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM positions WHERE symbol = ?', (symbol,))
+    conn.commit()
+    return cursor.rowcount > 0

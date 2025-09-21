@@ -182,13 +182,9 @@ class UserDataStream:
 
         # Update database
         if self.db_conn:
-            # First, check if we're using the new db.py or db_updated.py
-            try:
-                from db import update_trade_on_fill
-                use_new_db = True
-            except ImportError:
-                from db_updated import insert_order_status, update_order_filled, update_order_canceled
-                use_new_db = False
+            # Import the functions we need
+            from db import update_trade_on_fill, insert_order_status, update_order_filled, update_order_canceled
+            use_new_db = True
 
             if use_new_db:
                 # Use the new update_trade_on_fill function
@@ -282,9 +278,9 @@ class UserDataStream:
 
                 # Update database
                 if self.db_conn:
-                    from db_updated import upsert_position
+                    from db import insert_or_update_position
                     side = 'LONG' if position_amount > 0 else 'SHORT'
-                    upsert_position(self.db_conn, symbol, side, abs(position_amount), entry_price, entry_price)
+                    insert_or_update_position(self.db_conn, symbol, side, abs(position_amount), entry_price, entry_price)
             else:
                 # Position closed
                 logger.info(f"Position closed for {symbol}")
@@ -293,8 +289,8 @@ class UserDataStream:
                     self.position_manager.close_position(symbol)
 
                 if self.db_conn:
-                    from db_updated import close_position
-                    close_position(self.db_conn, symbol)
+                    from db import delete_position
+                    delete_position(self.db_conn, symbol)
 
                 # Cleanup orphaned TP/SL orders when position closes
                 if self.order_cleanup:
