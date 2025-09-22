@@ -548,15 +548,9 @@ def get_trade_details(trade_id):
 
     # Get trade information
     cursor = conn.execute('''
-        SELECT t.*,
-               or_main.parent_order_id,
-               or_tp.order_id as tp_order_id,
-               or_sl.order_id as sl_order_id
-        FROM trades t
-        LEFT JOIN order_relationships or_main ON t.order_id = or_main.order_id
-        LEFT JOIN order_relationships or_tp ON or_main.order_id = or_tp.parent_order_id AND or_tp.order_type = 'TP'
-        LEFT JOIN order_relationships or_sl ON or_main.order_id = or_sl.parent_order_id AND or_sl.order_type = 'SL'
-        WHERE t.id = ?
+        SELECT *
+        FROM trades
+        WHERE id = ?
     ''', (trade_id,))
 
     trade_row = cursor.fetchone()
@@ -616,24 +610,12 @@ def get_trade_details(trade_id):
     trade['pnl_breakdown'] = pnl_breakdown
 
     # Get related trades (TP/SL orders)
-    if trade.get('parent_order_id'):
-        cursor = conn.execute('''
-            SELECT * FROM trades
-            WHERE order_id IN (
-                SELECT order_id FROM order_relationships
-                WHERE parent_order_id = ?
-            )
-        ''', (trade['parent_order_id'],))
-        trade['related_trades'] = [dict(row) for row in cursor.fetchall()]
-    else:
-        cursor = conn.execute('''
-            SELECT * FROM trades
-            WHERE order_id IN (
-                SELECT order_id FROM order_relationships
-                WHERE parent_order_id = ?
-            )
-        ''', (trade['order_id'],))
-        trade['related_trades'] = [dict(row) for row in cursor.fetchall()]
+    cursor = conn.execute('''
+        SELECT * FROM trades
+        WHERE parent_order_id = ? AND id != ?
+        ORDER BY timestamp ASC
+    ''', (trade.get('parent_order_id', trade['order_id']), trade_id))
+    trade['related_trades'] = [dict(row) for row in cursor.fetchall()]
 
     conn.close()
     return jsonify(trade)

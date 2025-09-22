@@ -175,6 +175,8 @@ body {
     transform: translateX(2px);
 }
 
+#trades-table td:nth-child(4),
+#trades-table td:nth-child(5),
 #trades-table td:nth-child(6),
 #trades-table td:nth-child(7),
 #trades-table td:nth-child(8) {
@@ -853,6 +855,20 @@ tbody tr:hover {
 /* Settings Section */
 .settings-section .card {
     min-height: auto;
+}
+
+.btn-settings {
+    padding: 8px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.btn-settings:hover {
+    color: var(--text-primary);
 }
 
 /* Responsive Updates */

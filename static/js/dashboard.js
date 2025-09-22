@@ -55,6 +55,9 @@ class Dashboard {
         if (syncBtn) {
             syncBtn.addEventListener('click', () => this.syncPNLData());
         }
+
+        // Settings button
+        document.getElementById('settings-btn').addEventListener('click', () => this.openSettingsModal());
     }
 
     connectSSE() {
@@ -1016,6 +1019,25 @@ class Dashboard {
             console.error('Error loading trade details:', error);
             this.showToast('Error loading trade details', 'error');
         }
+    }
+
+    openSettingsModal() {
+        const modal = document.getElementById('settings-modal');
+        modal.style.display = 'block';
+
+        // Load config to ensure fresh data
+        this.loadConfig();
+
+        // Setup close handlers
+        const closeBtn = modal.querySelector('.modal-close');
+        closeBtn.onclick = () => modal.style.display = 'none';
+
+        // Close on outside click
+        window.onclick = (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
     }
 
     async fetchAvailableSymbols() {
