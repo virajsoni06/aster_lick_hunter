@@ -12,7 +12,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-active-success)](https://github.com/yourusername/aster-liquidation-hunter)
+[![Status](https://img.shields.io/badge/status-active-success)](https://github.com/CryptoGnome/aster_lick_hunter)
 [![Dashboard](https://img.shields.io/badge/dashboard-web--based-orange)](http://localhost:5000)
 
 An advanced cryptocurrency trading bot that monitors real-time liquidation events on Aster DEX and executes intelligent counter-trades based on configurable volume thresholds. Features a comprehensive web dashboard for monitoring, analytics, and configuration management.
@@ -28,6 +28,11 @@ An advanced cryptocurrency trading bot that monitors real-time liquidation event
 - **Multi-Symbol Trading** - Trade multiple cryptocurrency pairs simultaneously
 
 ### Advanced Features
+- **🆕 Intelligent Tranche System** - Revolutionary position management that automatically splits positions into tranches based on PnL performance
+  - Creates new tranches when existing positions reach configurable loss thresholds
+  - Merges profitable tranches to optimize capital efficiency
+  - Limits maximum tranches per symbol/side for risk control
+  - Configurable PnL increment percentage for tranche triggers (default 5%)
 - **Smart Position Sizing** - Calculates optimal position sizes based on leverage and risk parameters
 - **Order Lifecycle Management** - Automated cleanup of stale orders and position tracking
 - **Real-time P&L Tracking** - Monitor realized and unrealized profits/losses
@@ -72,8 +77,8 @@ An advanced cryptocurrency trading bot that monitors real-time liquidation event
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/aster-liquidation-hunter.git
-cd aster-liquidation-hunter
+git clone https://github.com/CryptoGnome/aster_lick_hunter.git
+cd aster_lick_hunter
 ```
 
 2. **Install dependencies**
@@ -125,7 +130,9 @@ Open your browser and navigate to: http://localhost:5000
     "hedge_mode": true,            // Enable hedge mode
     "order_ttl_seconds": 30,       // Order time-to-live
     "max_open_orders_per_symbol": 5,
-    "max_total_exposure_usdt": 1000.0
+    "max_total_exposure_usdt": 1000.0,
+    "tranche_pnl_increment_pct": 5.0,  // PnL threshold for new tranche creation
+    "max_tranches_per_symbol_side": 5  // Maximum tranches per symbol/side
   }
 }
 ```
@@ -196,16 +203,20 @@ Open your browser and navigate to: http://localhost:5000
 
 ## 📈 Trading Strategy
 
-The bot implements a counter-trend strategy based on liquidation cascades:
+The bot implements a counter-trend strategy based on liquidation cascades with advanced tranche management:
 
 1. **Monitor** - Continuously monitor liquidation events
 2. **Aggregate** - Calculate total liquidation volume in rolling window
 3. **Trigger** - Execute trade when volume exceeds threshold
 4. **Position** - Take opposite position to liquidation direction
-5. **Manage** - Set automatic take profit and stop loss levels
-6. **Track** - Monitor position performance in real-time
+5. **Tranche Management** - Intelligently manage positions through tranches:
+   - Create new tranches when losses exceed PnL threshold (default 5%)
+   - Merge profitable tranches to optimize capital efficiency
+   - Limit maximum tranches per symbol/side for risk control
+6. **Manage** - Set automatic take profit and stop loss levels
+7. **Track** - Monitor position performance in real-time
 
-### Example Trade Flow
+### Example Trade Flow with Tranche System
 
 ```
 Liquidation Detected:
@@ -217,14 +228,21 @@ Volume Check:
   └─> 60s window: $45,000
   └─> Threshold: $20,000 ✓
 
-Execute Trade:
+Execute Trade (Tranche 0):
   └─> Side: SHORT (opposite)
   └─> Size: $100 × 10 leverage = $1,000 position
   └─> Entry: $98,500 (0.1% below market)
+  └─> Tranche ID: 0 (first position)
 
 Risk Management:
   └─> Take Profit: $96,530 (2% profit)
   └─> Stop Loss: $99,485 (1% loss)
+
+If Price Moves Against (Loss > 5%):
+  └─> New Liquidation Triggers
+  └─> Create Tranche 1 (separate from Tranche 0)
+  └─> Independent entry price tracking
+  └─> Automatic merge when profitable
 ```
 
 ## 🔒 Security Features
@@ -320,9 +338,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/aster-liquidation-hunter/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/aster-liquidation-hunter/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/aster-liquidation-hunter/wiki)
+- **Issues**: [GitHub Issues](https://github.com/CryptoGnome/aster_lick_hunter/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/CryptoGnome/aster_lick_hunter/discussions)
+- **Documentation**: [Wiki](https://github.com/CryptoGnome/aster_lick_hunter/wiki)
 
 ## 🚦 Status
 
@@ -334,8 +352,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - ✅ Real-time Updates
 - ✅ P&L Tracking
 - ✅ Configuration UI
-- 🔄 Machine Learning Integration (Coming Soon)
-- 🔄 Mobile App (Planned)
+- ✅ Intelligent Tranche System
 
 ---
 
@@ -344,10 +361,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 </p>
 
 <p align="center">
-  <a href="https://github.com/yourusername/aster-liquidation-hunter">
-    <img src="https://img.shields.io/github/stars/yourusername/aster-liquidation-hunter?style=social" alt="Stars">
+  <a href="https://github.com/CryptoGnome/aster_lick_hunter">
+    <img src="https://img.shields.io/github/stars/CryptoGnome/aster_lick_hunter?style=social" alt="Stars">
   </a>
-  <a href="https://github.com/yourusername/aster-liquidation-hunter/network/members">
-    <img src="https://img.shields.io/github/forks/yourusername/aster-liquidation-hunter?style=social" alt="Forks">
+  <a href="https://github.com/CryptoGnome/aster_lick_hunter/network/members">
+    <img src="https://img.shields.io/github/forks/CryptoGnome/aster_lick_hunter?style=social" alt="Forks">
   </a>
 </p>
