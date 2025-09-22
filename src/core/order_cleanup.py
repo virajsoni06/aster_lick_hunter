@@ -38,6 +38,9 @@ class OrderCleanup:
         # Track orders we've placed this session
         self.session_orders: Dict[str, Set[str]] = {}  # symbol -> set of order_ids
 
+        # Track orders we've already tried to cancel during position closure
+        self.processed_closure_orders: Set[str] = set()
+
         logger.info(f"Order cleanup initialized: interval={cleanup_interval_seconds}s, stale_limit={stale_limit_order_minutes}min")
 
     async def get_open_orders(self, symbol: str = None) -> List[Dict]:
@@ -146,7 +149,7 @@ class OrderCleanup:
             order_id: Order ID to cancel
 
         Returns:
-            True if successfully canceled
+            True if successfully canceled or order already doesn't exist
         """
         try:
             url = f"{config.BASE_URL}/fapi/v1/order"
@@ -164,8 +167,19 @@ class OrderCleanup:
                 self.update_order_canceled(order_id)
                 return True
             else:
-                logger.error(f"Failed to cancel order {order_id}: {response.text}")
-                return False
+                # Check for -2011 "Unknown order sent" - treat as already canceled success
+                response_json = response.json()
+                error_code = response_json.get('code')
+                error_msg = response_json.get('msg')
+
+                if error_code == -2011 and error_msg == "Unknown order sent.":
+                    logger.info(f"Order {order_id} already canceled or does not exist (treat as success)")
+                    # Update database as canceled to prevent further attempts
+                    self.update_order_canceled(order_id)
+                    return True
+                else:
+                    logger.error(f"Failed to cancel order {order_id}: {response.text}")
+                    return False
 
         except Exception as e:
             logger.error(f"Error canceling order {order_id}: {e}")
@@ -642,6 +656,13 @@ class OrderCleanup:
                         conn.close()
                         logger.info(f"Stored recovery order relationship for {recovery_order['symbol']}: "
                                   f"tp={recovery_order['tp_order_id']}, sl={recovery_order['sl_order_id']}")
+
+                        # Mark recovery orders as protected to prevent immediate cancellation
+                        if recovery_order['tp_order_id']:
+                            self.processed_closure_orders.discard(recovery_order['tp_order_id'])  # Ensure not in closure set
+                        if recovery_order['sl_order_id']:
+                            self.processed_closure_orders.discard(recovery_order['sl_order_id'])  # Ensure not in closure set
+
                     except Exception as e:
                         logger.error(f"Error storing recovery order relationship for {recovery_order['symbol']}: {e}")
                         # Continue with next order even if one fails
@@ -678,6 +699,11 @@ class OrderCleanup:
             order_id = str(order['orderId'])
             reduce_only = order.get('reduceOnly', False)
 
+            # Skip if we've already processed this order for closure
+            if order_id in self.processed_closure_orders:
+                logger.debug(f"Skipping already processed closure order {order_id}")
+                continue
+
             # Cancel all TP/SL/STOP orders for this symbol
             is_tp_sl = order_type in [
                 'TAKE_PROFIT_MARKET',
@@ -691,6 +717,8 @@ class OrderCleanup:
                 logger.info(f"Canceling {order_type} order {order_id} due to position closure")
                 if await self.cancel_order(symbol, order_id):
                     canceled_count += 1
+                # Mark as processed even if cancel failed, to prevent re-attempts
+                self.processed_closure_orders.add(order_id)
 
         if canceled_count > 0:
             logger.info(f"Canceled {canceled_count} orders for closed position {symbol}")
