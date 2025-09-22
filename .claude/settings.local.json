@@ -11,7 +11,8 @@
       "Bash(copy bot.db databot.db)",
       "Bash(copy bot.log databot.log)",
       "Bash(copy liquidations.db dataliquidations.db)",
-      "Bash(copy trades.db datatrades.db)"
+      "Bash(copy trades.db datatrades.db)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

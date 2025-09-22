@@ -343,7 +343,7 @@ class OrderCleanup:
                 if age_seconds > self.stale_limit_order_seconds:
                     # Check if this LIMIT order is actually a tracked TP/SL order
                     if self.is_order_related_to_position(order_id, symbol):
-                        logger.info(f"Skipping tracked TP/SL limit order {order_id} for {symbol} (age: {age_seconds:.0f}s)")
+                        logger.debug(f"Skipping tracked TP/SL limit order {order_id} for {symbol} (age: {age_seconds:.0f}s)")
                         continue
 
                     logger.warning(f"Found stale limit order {order_id} for {symbol}, age: {age_seconds:.0f}s")

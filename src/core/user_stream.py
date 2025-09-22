@@ -184,7 +184,7 @@ class UserDataStream:
         # Update database
         if self.db_path:
             # Import the functions we need
-            from db import update_trade_on_fill, insert_order_status, update_order_filled, update_order_canceled
+            from src.database.db import update_trade_on_fill, insert_order_status, update_order_filled, update_order_canceled
             use_new_db = True
 
             if use_new_db:
@@ -208,7 +208,7 @@ class UserDataStream:
                         logger.warning(f"No trade record found for order {order_id}, may need to create one")
                         # If no existing trade, we might need to insert it
                         # This can happen if the order was placed before our tracking started
-                        from db import insert_trade
+                        from src.database.db import insert_trade
                         insert_trade(
                             conn,
                             symbol=symbol,
@@ -290,7 +290,7 @@ class UserDataStream:
 
                 # Update database
                 if self.db_path:
-                    from db import insert_or_update_position
+                    from src.database.db import insert_or_update_position
                     import sqlite3
                     conn = sqlite3.connect(self.db_path)
                     side = 'LONG' if position_amount > 0 else 'SHORT'
@@ -305,7 +305,7 @@ class UserDataStream:
                     self.position_manager.close_position(symbol)
 
                 if self.db_path:
-                    from db import delete_position
+                    from src.database.db import delete_position
                     import sqlite3
                     conn = sqlite3.connect(self.db_path)
                     delete_position(conn, symbol)
