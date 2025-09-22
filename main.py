@@ -16,6 +16,29 @@ def main():
     conn = init_db(config.DB_PATH)
     log.info(f"Database initialized: {config.DB_PATH}")
 
+    # Verify database tables were created
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = [t[0] for t in cursor.fetchall()]
+    expected_tables = ['liquidations', 'trades', 'order_relationships', 'order_status', 'positions']
+
+    missing_tables = [t for t in expected_tables if t not in tables]
+    if missing_tables:
+        log.error(f"Missing database tables: {missing_tables}")
+        log.info("Attempting to re-create database tables...")
+        conn.close()
+        conn = init_db(config.DB_PATH)
+
+        # Check again
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [t[0] for t in cursor.fetchall()]
+        if not all(t in tables for t in expected_tables):
+            log.error("Failed to create database tables!")
+            exit(1)
+
+    log.info(f"Database tables verified: {', '.join(tables)}")
+
     # Set up signal handlers for graceful shutdown
     def signal_handler(signum, frame):
         log.info("Received shutdown signal, stopping...")

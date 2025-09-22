@@ -183,17 +183,18 @@ class UserDataStream:
 
         # Update database
         if self.db_path:
-            # Import the functions we need
-            from src.database.db import update_trade_on_fill, insert_order_status, update_order_filled, update_order_canceled
-            use_new_db = True
+            try:
+                # Import the functions we need
+                from src.database.db import update_trade_on_fill, insert_order_status, update_order_filled, update_order_canceled
+                use_new_db = True
 
-            if use_new_db:
-                # Use the new update_trade_on_fill function
-                if status in ['FILLED', 'PARTIALLY_FILLED']:
-                    import sqlite3
-                    conn = sqlite3.connect(self.db_path)
-                    # Update trade with fill information
-                    rows_updated = update_trade_on_fill(
+                if use_new_db:
+                    # Use the new update_trade_on_fill function
+                    if status in ['FILLED', 'PARTIALLY_FILLED']:
+                        import sqlite3
+                        conn = sqlite3.connect(self.db_path)
+                        # Update trade with fill information
+                        rows_updated = update_trade_on_fill(
                         conn,
                         order_id=order_id,
                         trade_id=trade_id,
@@ -202,14 +203,14 @@ class UserDataStream:
                         avg_price=avg_price if avg_price > 0 else price,
                         realized_pnl=realized_pnl,
                         commission=-abs(commission_amount) if commission_amount else None  # Store as negative
-                    )
+                        )
 
-                    if rows_updated == 0:
-                        logger.warning(f"No trade record found for order {order_id}, may need to create one")
-                        # If no existing trade, we might need to insert it
-                        # This can happen if the order was placed before our tracking started
-                        from src.database.db import insert_trade
-                        insert_trade(
+                        if rows_updated == 0:
+                            logger.warning(f"No trade record found for order {order_id}, may need to create one")
+                            # If no existing trade, we might need to insert it
+                            # This can happen if the order was placed before our tracking started
+                            from src.database.db import insert_trade
+                            insert_trade(
                             conn,
                             symbol=symbol,
                             order_id=order_id,
@@ -218,9 +219,9 @@ class UserDataStream:
                             price=avg_price if avg_price > 0 else price,
                             status=status,
                             order_type=order_type
-                        )
-                        # Then update with fill details
-                        update_trade_on_fill(
+                            )
+                            # Then update with fill details
+                            update_trade_on_fill(
                             conn,
                             order_id=order_id,
                             trade_id=trade_id,
@@ -229,31 +230,34 @@ class UserDataStream:
                             avg_price=avg_price if avg_price > 0 else price,
                             realized_pnl=realized_pnl,
                             commission=-abs(commission_amount) if commission_amount else None
-                        )
-                    conn.commit()
-                    conn.close()
+                            )
+                        conn.commit()
+                        conn.close()
 
-                elif status == 'CANCELED':
-                    # Just update status to canceled
+                    elif status == 'CANCELED':
+                        # Just update status to canceled
+                        import sqlite3
+                        conn = sqlite3.connect(self.db_path)
+                        cursor = conn.cursor()
+                        cursor.execute('UPDATE trades SET status = ? WHERE order_id = ?', ('CANCELED', order_id))
+                        conn.commit()
+                        conn.close()
+
+                else:
+                    # Fallback to old db_updated methods
                     import sqlite3
                     conn = sqlite3.connect(self.db_path)
-                    cursor = conn.cursor()
-                    cursor.execute('UPDATE trades SET status = ? WHERE order_id = ?', ('CANCELED', order_id))
+                    if status == 'FILLED':
+                        update_order_filled(conn, order_id, filled_qty)
+                    elif status == 'CANCELED':
+                        update_order_canceled(conn, order_id)
+                    else:
+                        insert_order_status(conn, order_id, symbol, side, quantity, price, position_side, status)
                     conn.commit()
                     conn.close()
-
-            else:
-                # Fallback to old db_updated methods
-                import sqlite3
-                conn = sqlite3.connect(self.db_path)
-                if status == 'FILLED':
-                    update_order_filled(conn, order_id, filled_qty)
-                elif status == 'CANCELED':
-                    update_order_canceled(conn, order_id)
-                else:
-                    insert_order_status(conn, order_id, symbol, side, quantity, price, position_side, status)
-                conn.commit()
-                conn.close()
+            except Exception as e:
+                logger.error(f"Error updating database for order {order_id}: {e}")
+                # Continue processing even if database update fails
 
         # Update position manager when order fills
         if status == 'FILLED' and self.position_manager:
@@ -290,13 +294,16 @@ class UserDataStream:
 
                 # Update database
                 if self.db_path:
-                    from src.database.db import insert_or_update_position
-                    import sqlite3
-                    conn = sqlite3.connect(self.db_path)
-                    side = 'LONG' if position_amount > 0 else 'SHORT'
-                    insert_or_update_position(conn, symbol, side, abs(position_amount), entry_price, entry_price)
-                    conn.commit()
-                    conn.close()
+                    try:
+                        from src.database.db import insert_or_update_position
+                        import sqlite3
+                        conn = sqlite3.connect(self.db_path)
+                        side = 'LONG' if position_amount > 0 else 'SHORT'
+                        insert_or_update_position(conn, symbol, side, abs(position_amount), entry_price, entry_price)
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Error updating position for {symbol}: {e}")
             else:
                 # Position closed
                 logger.info(f"Position closed for {symbol}")
@@ -305,12 +312,15 @@ class UserDataStream:
                     self.position_manager.close_position(symbol)
 
                 if self.db_path:
-                    from src.database.db import delete_position
-                    import sqlite3
-                    conn = sqlite3.connect(self.db_path)
-                    delete_position(conn, symbol)
-                    conn.commit()
-                    conn.close()
+                    try:
+                        from src.database.db import delete_position
+                        import sqlite3
+                        conn = sqlite3.connect(self.db_path)
+                        delete_position(conn, symbol)
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Error deleting position for {symbol}: {e}")
 
                 # Cleanup orphaned TP/SL orders when position closes
                 if self.order_cleanup:

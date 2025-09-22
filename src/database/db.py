@@ -116,6 +116,17 @@ def init_db(db_path):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_order_status_status ON order_status (status);')
 
     conn.commit()
+    cursor.close()
+
+    # Verify tables were created
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    created_tables = [t[0] for t in cursor.fetchall()]
+    cursor.close()
+
+    if not created_tables:
+        raise Exception("Failed to create database tables - no tables found after initialization!")
+
     return conn
 
 def insert_liquidation(conn, symbol, side, qty, price):
