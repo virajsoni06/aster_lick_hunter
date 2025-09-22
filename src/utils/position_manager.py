@@ -152,7 +152,7 @@ class PositionManager:
                     del self.pending_exposure[symbol]
                 logger.debug(f"Removed pending collateral for {symbol}: {margin_reserved:.2f} USDT")
 
-    def add_fill_to_position(self, symbol: str, side: str, quantity: float, price: float, leverage: int = 1) -> str:
+    def add_fill_to_position(self, symbol: str, side: str, quantity: float, price: float, leverage: int = 1) -> (str, int):
         """
         Add a fill to position, implementing tranche logic.
 
@@ -164,7 +164,7 @@ class PositionManager:
             leverage: Leverage
 
         Returns:
-            Key used for the position
+            (Key used for the position, spent tranche_id for the fill)
         """
         with self.lock:
             key = f"{symbol}_{side}"  # Always use side-specific key for tranching
@@ -176,21 +176,24 @@ class PositionManager:
             if not tranches:
                 # First tranche: id 0
                 tranche_id = 0
+                logger.info(f"Creating first tranche 0 for {key}")
             else:
-                # Check if any existing tranche has realized PnL <= -5%
-                # If so, create new tranche; else add to one with best PnL (to avoid averaging too much)
-                has_deep_loss = any(
-                    ((price - p.entry_price) / p.entry_price * 100 if side == 'LONG' else (p.entry_price - price) / p.entry_price * 100) <= -5.0
-                    for p in tranches.values()
-                )
+                # Check if any existing tranche has realized PnL <= - (increment * num_tranches) or len >= max
+                num_tranches = len(tranches)
+                loss_threshold = -self.tranche_increment_pct * num_tranches
+                has_deep_loss = any(p.unrealized_pnl <= loss_threshold for p in tranches.values())
 
-                if has_deep_loss or len(tranches) >= self.max_tranches_per_key:
+                if has_deep_loss or num_tranches >= self.max_tranches_per_key:
                     tranche_id = max(tranches.keys()) + 1
-                    logger.info(f"Creating new tranche {tranche_id} for {key} due to deep loss or max tranches")
+                    logger.info(f"Creating new tranche {tranche_id} for {key} due to deep loss (>= {loss_threshold:.1f}%) or max tranches ({num_tranches} >= {self.max_tranches_per_key})")
+                    if num_tranches >= self.max_tranches_per_key:
+                        self.merge_least_lossy_tranches(key)
+                        tranche_id = max(tranches.keys()) + 1
+                        logger.warning(f"Forced merge due to max tranches; created new tranche {tranche_id}")
                 else:
                     # Add to tranche with highest PnL (least loss)
                     tranche_id = max(tranches.items(), key=lambda x: x[1].unrealized_pnl)[0]
-                    logger.info(f"Adding fill to existing tranche {tranche_id} for {key}")
+                    logger.info(f"Adding fill to existing tranche {tranche_id} for {key} (PnL: {tranches[tranche_id].unrealized_pnl:.2f})")
 
             if tranche_id in tranches:
                 # Update existing tranche by averaging entry
@@ -219,11 +222,94 @@ class PositionManager:
                     leverage=leverage,
                     margin_used=position_value / leverage if leverage > 0 else position_value
                 )
-                position.unrealized_pnl = 0.0  # New fill, assume no PnL yet
+                position.unrealized_pnl = (price - price) * quantity if side == 'LONG' else (price - price) * quantity  # 0 initially
                 tranches[tranche_id] = position
                 logger.info(f"Created new tranche {tranche_id} for {key}: {quantity}@{price}")
 
-            return key
+            return key, tranche_id
+
+    def merge_least_lossy_tranches(self, key: str) -> None:
+        """
+        Merge the two tranches with the highest PnL (least loss) into one.
+
+        Args:
+            key: Symbol_side key
+        """
+        with self.lock:
+            if key not in self.positions or len(self.positions[key]) < 2:
+                return
+
+            tranches = self.positions[key]
+            # Get two with highest PnL
+            sorted_tranches = sorted(tranches.items(), key=lambda x: x[1].unrealized_pnl, reverse=True)
+            tranche1_id, pos1 = sorted_tranches[0]
+            tranche2_id, pos2 = sorted_tranches[1]
+
+            # Merge pos2 into pos1
+            total_qty = pos1.quantity + pos2.quantity
+            weighted_entry = (pos1.quantity * pos1.entry_price + pos2.quantity * pos2.entry_price) / total_qty
+            pos1.quantity = total_qty
+            pos1.entry_price = weighted_entry
+            pos1.position_value_usdt = total_qty * pos1.current_price
+            pos1.unrealized_pnl = (pos1.current_price - weighted_entry) * total_qty if pos1.side == 'LONG' else (weighted_entry - pos1.current_price) * total_qty
+            pos1.last_updated = time.time()
+
+            # Remove pos2
+            del tranches[tranche2_id]
+            logger.info(f"Merged tranches {tranche1_id} and {tranche2_id} for {key}: new qty={total_qty}, entry={weighted_entry:.6f}")
+
+    def get_tranches(self, key: str) -> Dict[int, Position]:
+        """
+        Get all tranches for a symbol_side key.
+
+        Args:
+            key: Symbol_side key
+
+        Returns:
+            Dict of tranche_id to Position
+        """
+        with self.lock:
+            return dict(self.positions.get(key, {}))
+
+    def merge_eligible_tranches(self, key: str) -> int:
+        """
+        Merge tranches that are no longer deeply underwater (PnL > -increment)
+
+        Args:
+            key: Symbol_side key
+
+        Returns:
+            Number of merges performed
+        """
+        with self.lock:
+            if key not in self.positions:
+                return 0
+
+            tranches = self.positions[key]
+            if len(tranches) <= 1:
+                return 0
+
+            eligible = [tid for tid, p in tranches.items() if p.unrealized_pnl > -self.tranche_increment_pct]
+            if len(eligible) > 1:
+                # Merge all into the one with highest PnL
+                best_id = max(eligible, key=lambda tid: tranches[tid].unrealized_pnl)
+                to_merge = [tid for tid in eligible if tid != best_id]
+
+                for tid in to_merge:
+                    pos = tranches[tid]
+                    best_pos = tranches[best_id]
+                    total_qty = best_pos.quantity + pos.quantity
+                    weighted_entry = (best_pos.quantity * best_pos.entry_price + pos.quantity * pos.entry_price) / total_qty
+                    best_pos.quantity = total_qty
+                    best_pos.entry_price = weighted_entry
+                    best_pos.position_value_usdt = total_qty * best_pos.current_price
+                    best_pos.unrealized_pnl = (best_pos.current_price - weighted_entry) * total_qty if best_pos.side == 'LONG' else (weighted_entry - best_pos.current_price) * total_qty
+                    best_pos.last_updated = time.time()
+                    del tranches[tid]
+
+                logger.info(f"Merged {len(to_merge)} eligible tranches into {best_id} for {key}")
+                return len(to_merge)
+            return 0
 
     def update_position(self, symbol: str, side: str, quantity: float,
                        price: float, leverage: int = 1) -> str:

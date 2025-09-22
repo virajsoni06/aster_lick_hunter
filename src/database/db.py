@@ -51,6 +51,7 @@ def init_db(db_path):
             sl_order_id TEXT,
             symbol TEXT NOT NULL,
             position_side TEXT DEFAULT 'BOTH',
+            tranche_id INTEGER DEFAULT 0,
             created_at INTEGER NOT NULL
         )
     ''')
@@ -73,11 +74,12 @@ def init_db(db_path):
         )
     ''')
 
-    # Create positions table for current position tracking
+    # Create positions table for current position tracking (tranche support)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS positions (
-            symbol TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
             side TEXT NOT NULL,  -- LONG or SHORT
+            tranche_id INTEGER DEFAULT 0,
             quantity REAL NOT NULL,
             entry_price REAL NOT NULL,
             current_price REAL NOT NULL,
@@ -85,7 +87,8 @@ def init_db(db_path):
             unrealized_pnl REAL DEFAULT 0,
             margin_used REAL DEFAULT 0,
             leverage INTEGER DEFAULT 1,
-            last_updated INTEGER NOT NULL
+            last_updated INTEGER NOT NULL,
+            PRIMARY KEY (symbol, side, tranche_id)
         )
     ''')
 
