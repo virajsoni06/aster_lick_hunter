@@ -343,66 +343,29 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
         if symbol_config.get('stop_loss_enabled', False):
             sl_pct = symbol_config.get('stop_loss_pct', 1.0)
 
-            if symbol_config.get('use_trailing_stop', False):
-                # Trailing stop
-                callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
-                activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
+            # Fixed stop loss
+            sl_price = calculate_sl_price(entry_price, side, sl_pct, actual_position_side)
 
-                # Calculate activation price (e.g., 0.5% in profit)
-                if hedge_mode and position_side != 'BOTH':
-                    if position_side == 'LONG':
-                        activation_price = entry_price * (1 + activation_pct / 100.0)
-                    else:  # SHORT
-                        activation_price = entry_price * (1 - activation_pct / 100.0)
-                else:
-                    # One-way mode
-                    if side == 'BUY':
-                        activation_price = entry_price * (1 + activation_pct / 100.0)
-                    else:
-                        activation_price = entry_price * (1 - activation_pct / 100.0)
-
-                # Determine SL side (opposite of entry for closing)
-                if hedge_mode and position_side != 'BOTH':
-                    sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
-                else:
-                    sl_side = 'SELL' if side == 'BUY' else 'BUY'
-
-                sl_order = {
-                    'symbol': symbol,
-                    'side': sl_side,
-                    'type': 'TRAILING_STOP_MARKET',
-                    'quantity': str(qty),
-                    'callbackRate': str(callback_rate),
-                    'activationPrice': format_price(symbol, activation_price),
-                    'positionSide': position_side,
-                    'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE')
-                }
-                orders.append(sl_order)
-                log.info(f"Adding trailing stop with {activation_pct}% activation, {callback_rate}% callback")
+            # Determine SL side (opposite of entry for closing)
+            if hedge_mode and position_side != 'BOTH':
+                sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
             else:
-                # Fixed stop loss
-                sl_price = calculate_sl_price(entry_price, side, sl_pct, actual_position_side)
+                sl_side = 'SELL' if side == 'BUY' else 'BUY'
 
-                # Determine SL side (opposite of entry for closing)
-                if hedge_mode and position_side != 'BOTH':
-                    sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
-                else:
-                    sl_side = 'SELL' if side == 'BUY' else 'BUY'
-
-                sl_order = {
-                    'symbol': symbol,
-                    'side': sl_side,
-                    'type': 'STOP_MARKET',
-                    'stopPrice': format_price(symbol, sl_price),
-                    'closePosition': 'false',
-                    'quantity': str(qty),
-                    'positionSide': position_side,
-                    'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-                    'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
-                    'reduceOnly': 'false'  # Don't use reduceOnly for initial SL orders
-                }
-                orders.append(sl_order)
-                log.info(f"Adding SL order at {sl_price:.6f} ({sl_pct}% from entry)")
+            sl_order = {
+                'symbol': symbol,
+                'side': sl_side,
+                'type': 'STOP_MARKET',
+                'stopPrice': format_price(symbol, sl_price),
+                'closePosition': 'false',
+                'quantity': str(qty),
+                'positionSide': position_side,
+                'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
+                'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
+                'reduceOnly': 'false'  # Don't use reduceOnly for initial SL orders
+            }
+            orders.append(sl_order)
+            log.info(f"Adding SL order at {sl_price:.6f} ({sl_pct}% from entry)")
 
     # Handle simulation mode
     if config.SIMULATE_ONLY:

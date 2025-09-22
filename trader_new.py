@@ -444,65 +444,28 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
     if symbol_config.get('stop_loss_enabled', False):
         sl_pct = symbol_config.get('stop_loss_pct', 1.0)
 
-        if symbol_config.get('use_trailing_stop', False):
-            # Trailing stop
-            callback_rate = symbol_config.get('trailing_callback_rate', 1.0)
-            activation_pct = symbol_config.get('trailing_activation_pct', 0.5)
+        # Fixed stop loss
+        sl_price = calculate_sl_price(fill_price, entry_side, sl_pct, actual_position_side)
 
-            # Calculate activation price
-            if actual_position_side == 'LONG':
-                activation_price = fill_price * (1 + activation_pct / 100.0)
-            elif actual_position_side == 'SHORT':
-                activation_price = fill_price * (1 - activation_pct / 100.0)
-            else:
-                # One-way mode
-                if entry_side == 'BUY':
-                    activation_price = fill_price * (1 + activation_pct / 100.0)
-                else:
-                    activation_price = fill_price * (1 - activation_pct / 100.0)
-
-            # Determine SL side
-            if hedge_mode and position_side != 'BOTH':
-                sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
-            else:
-                sl_side = 'SELL' if entry_side == 'BUY' else 'BUY'
-
-            sl_order = {
-                'symbol': symbol,
-                'side': sl_side,
-                'type': 'TRAILING_STOP_MARKET',
-                'quantity': str(qty),
-                'callbackRate': str(callback_rate),
-                'activationPrice': format_price(symbol, activation_price),
-                'positionSide': position_side,
-                'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-                'reduceOnly': 'true'
-            }
-            tp_sl_orders.append(sl_order)
-            log.info(f"Preparing trailing stop with {activation_pct}% activation, {callback_rate}% callback")
+        # Determine SL side
+        if hedge_mode and position_side != 'BOTH':
+            sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
         else:
-            # Fixed stop loss
-            sl_price = calculate_sl_price(fill_price, entry_side, sl_pct, actual_position_side)
+            sl_side = 'SELL' if entry_side == 'BUY' else 'BUY'
 
-            # Determine SL side
-            if hedge_mode and position_side != 'BOTH':
-                sl_side = 'SELL' if position_side == 'LONG' else 'BUY'
-            else:
-                sl_side = 'SELL' if entry_side == 'BUY' else 'BUY'
-
-            sl_order = {
-                'symbol': symbol,
-                'side': sl_side,
-                'type': 'STOP_MARKET',
-                'stopPrice': format_price(symbol, sl_price),
-                'quantity': str(qty),
-                'positionSide': position_side,
-                'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
-                'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
-                'reduceOnly': 'true'
-            }
-            tp_sl_orders.append(sl_order)
-            log.info(f"Preparing SL order at {sl_price:.6f} ({sl_pct}% from {fill_price:.6f})")
+        sl_order = {
+            'symbol': symbol,
+            'side': sl_side,
+            'type': 'STOP_MARKET',
+            'stopPrice': format_price(symbol, sl_price),
+            'quantity': str(qty),
+            'positionSide': position_side,
+            'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
+            'priceProtect': str(symbol_config.get('price_protect', False)).lower(),
+            'reduceOnly': 'true'
+        }
+        tp_sl_orders.append(sl_order)
+        log.info(f"Preparing SL order at {sl_price:.6f} ({sl_pct}% from {fill_price:.6f})")
 
     # Place TP/SL orders
     if tp_sl_orders:

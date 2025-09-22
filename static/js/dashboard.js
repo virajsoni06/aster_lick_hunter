@@ -404,9 +404,6 @@ class Dashboard {
             { key: 'take_profit_pct', label: 'Take Profit %', type: 'number', step: '0.01' },
             { key: 'stop_loss_enabled', label: 'Stop Loss Enabled', type: 'select', options: ['true', 'false'] },
             { key: 'stop_loss_pct', label: 'Stop Loss %', type: 'number', step: '0.01' },
-            { key: 'use_trailing_stop', label: 'Use Trailing Stop', type: 'select', options: ['true', 'false'] },
-            { key: 'trailing_activation_pct', label: 'Trailing Activation %', type: 'number', step: '0.01' },
-            { key: 'trailing_callback_rate', label: 'Trailing Callback Rate %', type: 'number', step: '0.01' },
             { key: 'working_type', label: 'Working Type', type: 'select', options: ['CONTRACT_PRICE', 'MARK_PRICE'] },
             { key: 'price_protect', label: 'Price Protect', type: 'select', options: ['true', 'false'] }
         ];

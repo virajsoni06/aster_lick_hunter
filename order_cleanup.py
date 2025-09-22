@@ -194,7 +194,6 @@ class OrderCleanup:
             is_tp_sl = order_type in [
                 'TAKE_PROFIT_MARKET',
                 'STOP_MARKET',
-                'TRAILING_STOP_MARKET',
                 'TAKE_PROFIT',
                 'STOP',
                 'STOP_LOSS'
@@ -384,8 +383,8 @@ class OrderCleanup:
                 has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']
                             for order_type in existing_orders)
 
-                # Check for SL orders (including trailing stops)
-                has_sl = any(order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS', 'TRAILING_STOP_MARKET']
+                # Check for SL orders
+                has_sl = any(order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS']
                             for order_type in existing_orders)
 
                 orders_to_place = []
@@ -549,7 +548,6 @@ class OrderCleanup:
             is_tp_sl = order_type in [
                 'TAKE_PROFIT_MARKET',
                 'STOP_MARKET',
-                'TRAILING_STOP_MARKET',
                 'TAKE_PROFIT',
                 'STOP',
                 'STOP_LOSS'

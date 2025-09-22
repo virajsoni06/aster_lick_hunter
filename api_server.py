@@ -46,9 +46,6 @@ DEFAULT_SYMBOL_CONFIG = {
     "take_profit_pct": 5,
     "stop_loss_enabled": True,
     "stop_loss_pct": 20,
-    "use_trailing_stop": True,
-    "trailing_activation_pct": 0.5,
-    "trailing_callback_rate": 0.5,
     "working_type": "CONTRACT_PRICE",
     "price_protect": False
 }
