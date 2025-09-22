@@ -1,5 +1,15 @@
 # 🚀 Aster Liquidation Hunter Bot
 
+## 💝 Support Development - This Bot is 100% FREE!
+
+**This bot is completely free and open-source!** If you find it useful and want to support ongoing development, please consider creating your Aster DEX account using our referral link:
+
+### 👉 [**Create Aster DEX Account - Support Development**](https://www.asterdex.com/en/referral/3TixB2)
+
+*By using this referral link for your new account, you help fund continued improvements and new features while getting the exact same trading conditions. Thank you for your support!*
+
+---
+
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-active-success)](https://github.com/yourusername/aster-liquidation-hunter)
