@@ -34,7 +34,7 @@ class Dashboard {
 
         // Config tabs
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+            btn.addEventListener('click', (e) => this.switchTab(e.target));
         });
 
         // Save config button
@@ -505,15 +505,16 @@ class Dashboard {
         }
     }
 
-    switchTab(tab) {
+    switchTab(tabElement) {
+        const tab = tabElement.dataset.tab;
         // Update tab buttons
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.tab === tab);
+            btn.classList.toggle('active', btn === tabElement);
         });
 
         // Update tab content
         document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.toggle('active', content.id === `config-${tab}`);
+            content.classList.toggle('active', content.id === tab);
         });
     }
 

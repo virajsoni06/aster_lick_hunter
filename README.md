@@ -338,6 +338,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
+- **Discord Community**: [Join our Discord](https://discord.gg/P8Ev3Up) - Get help, share strategies, and connect with other traders
 - **Issues**: [GitHub Issues](https://github.com/CryptoGnome/aster_lick_hunter/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/CryptoGnome/aster_lick_hunter/discussions)
 - **Documentation**: [Wiki](https://github.com/CryptoGnome/aster_lick_hunter/wiki)

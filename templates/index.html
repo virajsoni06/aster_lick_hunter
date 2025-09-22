@@ -22,22 +22,117 @@
             </div>
         </header>
 
-        <!-- Main Dashboard Grid -->
-        <div class="dashboard-grid">
-            <!-- Configuration Editor -->
-            <div class="card config-section">
-                <h2>Configuration</h2>
+        <!-- Focused Dashboard Layout -->
+        <div class="dashboard-layout">
+            <!-- Balance Overview -->
+            <div class="card balance-overview">
+                <h2>Balance Overview</h2>
+                <div class="balance-grid">
+                    <div class="balance-item">
+                        <label>Wallet Balance</label>
+                        <span id="wallet-balance" class="balance-value">$0.00</span>
+                    </div>
+                    <div class="balance-item">
+                        <label>Available Balance</label>
+                        <span id="available-balance" class="balance-value">$0.00</span>
+                    </div>
+                    <div class="balance-item">
+                        <label>Margin Used</label>
+                        <span id="margin-used" class="balance-value">$0.00</span>
+                    </div>
+                    <div class="balance-item">
+                        <label>Unrealized PNL</label>
+                        <span id="unrealized-pnl" class="balance-value">$0.00</span>
+                    </div>
+                </div>
+                <button id="sync-balance-btn" class="btn btn-primary" style="margin-top: 10px;">Sync Balance</button>
+            </div>
+
+            <!-- PNL Analytics -->
+            <div class="pnl-section">
+                <div class="card pnl-summary">
+                    <h2>PNL Summary (7 Days)</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <label>Total PNL</label>
+                            <span id="total-pnl" class="stat-value">$0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <label>Realized PNL</label>
+                            <span id="realized-pnl" class="stat-value">$0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <label>Win Rate</label>
+                            <span id="win-rate" class="stat-value">0%</span>
+                        </div>
+                        <div class="stat-item">
+                            <label>Total Trades</label>
+                            <span id="pnl-trades" class="stat-value">0</span>
+                        </div>
+                    </div>
+                    <button id="sync-pnl-btn" class="btn btn-primary" style="margin-top: 10px;">Sync PNL Data</button>
+                </div>
+
+                <div class="card pnl-chart">
+                    <h2>Daily PNL (7 Days)</h2>
+                    <canvas id="pnl-chart"></canvas>
+                </div>
+
+                <div class="card symbol-performance">
+                    <h2>Symbol Performance</h2>
+                    <div class="table-container">
+                        <table id="symbol-performance-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Total PNL</th>
+                                    <th>Realized PNL</th>
+                                    <th>Fees</th>
+                                    <th>Trades</th>
+                                    <th>Win Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="symbol-performance-tbody">
+                                <!-- Performance data will be populated here -->
+                            </tbody>
+                        </table>
+                        <div id="no-performance" class="no-data">No performance data available</div>
+                    </div>
+                </div>
+
+                <div class="card recent-trades">
+                    <h2>Recent Trades with PNL</h2>
+                    <div class="table-container">
+                        <table id="trades-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>PnL</th>
+                                    <th>Commission</th>
+                                    <th>Net PNL</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-tbody">
+                                <!-- Trades will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <div class="card settings-section">
+                <h2>Settings</h2>
                 <div class="config-tabs">
                     <button class="tab-btn active" data-tab="global">Global Settings</button>
                     <button class="tab-btn" data-tab="symbols">Symbol Settings</button>
                     <button class="tab-btn" data-tab="manage">Manage Symbols</button>
                 </div>
-                <div id="config-global" class="tab-content active">
+                <div id="global" class="tab-content active">
                     <div class="config-grid">
-                        <div class="config-item">
-                            <label>Volume Window (sec)</label>
-                            <input type="number" id="volume_window_sec" class="config-input">
-                        </div>
                         <div class="config-item">
                             <label>Simulate Only</label>
                             <select id="simulate_only" class="config-input">
@@ -55,7 +150,7 @@
                         </div>
                     </div>
                 </div>
-                <div id="config-symbols" class="tab-content">
+                <div id="symbols" class="tab-content">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
                         <select id="symbol-selector" class="config-input" style="flex: 1;">
                             <!-- Symbol options will be populated here -->
@@ -66,7 +161,7 @@
                         <!-- Symbol-specific config will be populated here -->
                     </div>
                 </div>
-                <div id="config-manage" class="tab-content">
+                <div id="manage" class="tab-content">
                     <div class="symbol-manager">
                         <div style="margin-bottom: 20px;">
                             <button id="fetch-symbols-btn" class="btn btn-primary">Fetch Available Symbols</button>
@@ -81,178 +176,6 @@
                     </div>
                 </div>
                 <button id="save-config-btn" class="btn btn-success">Save Configuration</button>
-            </div>
-
-            <!-- Account Summary -->
-            <div class="card account-summary">
-                <h2>Account Summary</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <label>Wallet Balance</label>
-                        <span id="wallet-balance" class="stat-value">$0.00</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Unrealized PnL</label>
-                        <span id="unrealized-pnl" class="stat-value">$0.00</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Margin Used</label>
-                        <span id="margin-used" class="stat-value">$0.00</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Available Balance</label>
-                        <span id="available-balance" class="stat-value">$0.00</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PNL Summary -->
-            <div class="card pnl-summary">
-                <h2>PNL Summary (7 Days)</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <label>Total PNL</label>
-                        <span id="total-pnl" class="stat-value">$0.00</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Realized PNL</label>
-                        <span id="realized-pnl" class="stat-value">$0.00</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Win Rate</label>
-                        <span id="win-rate" class="stat-value">0%</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Total Trades</label>
-                        <span id="pnl-trades" class="stat-value">0</span>
-                    </div>
-                </div>
-                <button id="sync-pnl-btn" class="btn btn-primary" style="margin-top: 10px;">Sync PNL Data</button>
-            </div>
-
-            <!-- Trading Statistics -->
-            <div class="card trading-stats">
-                <h2>Trading Statistics (24h)</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <label>Total Trades</label>
-                        <span id="total-trades" class="stat-value">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Success Rate</label>
-                        <span id="success-rate" class="stat-value">0%</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Liquidations Tracked</label>
-                        <span id="liquidations-count" class="stat-value">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Volume Processed</label>
-                        <span id="volume-processed" class="stat-value">$0</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Active Positions -->
-            <div class="card positions-section">
-                <h2>Active Positions</h2>
-                <div class="table-container">
-                    <table id="positions-table">
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Side</th>
-                                <th>Size</th>
-                                <th>Entry Price</th>
-                                <th>Mark Price</th>
-                                <th>PnL</th>
-                                <th>PnL %</th>
-                                <th>Margin</th>
-                            </tr>
-                        </thead>
-                        <tbody id="positions-tbody">
-                            <!-- Positions will be populated here -->
-                        </tbody>
-                    </table>
-                    <div id="no-positions" class="no-data">No active positions</div>
-                </div>
-            </div>
-
-            <!-- Symbol Performance -->
-            <div class="card symbol-performance">
-                <h2>Symbol Performance (7 Days)</h2>
-                <div class="table-container">
-                    <table id="symbol-performance-table">
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Total PNL</th>
-                                <th>Realized PNL</th>
-                                <th>Fees</th>
-                                <th>Trades</th>
-                                <th>Win Rate</th>
-                            </tr>
-                        </thead>
-                        <tbody id="symbol-performance-tbody">
-                            <!-- Symbol performance will be populated here -->
-                        </tbody>
-                    </table>
-                    <div id="no-performance" class="no-data">No performance data available</div>
-                </div>
-            </div>
-
-            <!-- PNL Chart -->
-            <div class="card chart-container">
-                <h2>Daily PNL (7 Days)</h2>
-                <canvas id="pnl-chart"></canvas>
-            </div>
-
-            <!-- Recent Liquidations -->
-            <div class="card liquidations-section">
-                <h2>Recent Liquidations</h2>
-                <div class="table-container">
-                    <table id="liquidations-table">
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Symbol</th>
-                                <th>Side</th>
-                                <th>Quantity</th>
-                                <th>Price</th>
-                                <th>Value</th>
-                            </tr>
-                        </thead>
-                        <tbody id="liquidations-tbody">
-                            <!-- Liquidations will be populated here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Recent Trades -->
-            <div class="card trades-section">
-                <h2>Recent Trades</h2>
-                <div class="table-container">
-                    <table id="trades-table">
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Symbol</th>
-                                <th>Side</th>
-                                <th>Quantity</th>
-                                <th>Price</th>
-                                <th>PnL</th>
-                                <th>Commission</th>
-                                <th>Net PnL</th>
-                                <th>Status</th>
-                                <th>Type</th>
-                            </tr>
-                        </thead>
-                        <tbody id="trades-tbody">
-                            <!-- Trades will be populated here -->
-                        </tbody>
-                    </table>
-                </div>
             </div>
         </div>
 
