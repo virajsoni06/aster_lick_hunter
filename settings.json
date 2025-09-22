@@ -13,7 +13,10 @@
     "max_total_exposure_usdt": 200.0,
     "rate_limit_buffer_pct": 0.4,
     "order_status_check_interval": 5,
-    "time_in_force": "GTC"
+    "time_in_force": "GTC",
+    "tranche_pnl_increment_pct": 5.0,
+    "max_tranches_per_symbol_side": 5,
+    "open_orders_warning_threshold": 150
   },
   "symbols": {
     "BTCUSDT": {

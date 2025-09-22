@@ -4,9 +4,11 @@ Position manager for tracking and limiting exposure.
 
 import time
 import logging
-from typing import Dict, Optional, List
+import math
+from typing import Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
 from threading import Lock
+from src.utils.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +48,12 @@ class PositionManager:
         self.max_position_usdt_per_symbol = max_position_usdt_per_symbol
         self.max_total_exposure_usdt = max_total_exposure_usdt
 
-        # Current positions
-        self.positions: Dict[str, Position] = {}  # symbol -> Position
+        # Tranche settings
+        self.tranche_increment_pct = config.GLOBAL_SETTINGS.get('tranche_pnl_increment_pct', 5.0)
+        self.max_tranches_per_key = config.GLOBAL_SETTINGS.get('max_tranches_per_symbol_side', 5)
+
+        # Current positions: key = symbol if not hedge else f"{symbol}_{side}"
+        self.positions: Dict[str, Dict[int, Position]] = {}  # key -> tranche_id -> Position
 
         # Track pending orders that would affect positions
         self.pending_exposure: Dict[str, float] = {}  # symbol -> pending USDT
@@ -146,39 +152,63 @@ class PositionManager:
                     del self.pending_exposure[symbol]
                 logger.debug(f"Removed pending collateral for {symbol}: {margin_reserved:.2f} USDT")
 
-    def update_position(self, symbol: str, side: str, quantity: float,
-                       price: float, leverage: int = 1) -> None:
+    def add_fill_to_position(self, symbol: str, side: str, quantity: float, price: float, leverage: int = 1) -> str:
         """
-        Update or create a position.
+        Add a fill to position, implementing tranche logic.
 
         Args:
             symbol: Trading symbol
             side: LONG or SHORT
-            quantity: Position quantity
-            price: Current price
-            leverage: Position leverage
+            quantity: Fill quantity
+            price: Fill price
+            leverage: Leverage
+
+        Returns:
+            Key used for the position
         """
         with self.lock:
-            position_value = quantity * price
+            key = f"{symbol}_{side}"  # Always use side-specific key for tranching
+            if key not in self.positions:
+                self.positions[key] = {}
 
-            if symbol in self.positions:
-                # Update existing position
-                position = self.positions[symbol]
-                position.quantity = quantity
-                position.current_price = price
-                position.position_value_usdt = position_value
+            tranches = self.positions[key]
 
-                # Calculate unrealized PnL
-                if position.side == 'LONG':
-                    position.unrealized_pnl = (price - position.entry_price) * quantity
-                else:  # SHORT
-                    position.unrealized_pnl = (position.entry_price - price) * quantity
-
-                position.last_updated = time.time()
-                logger.info(f"Updated position {symbol}: {quantity}@{price}, PnL={position.unrealized_pnl:.2f}")
-
+            if not tranches:
+                # First tranche: id 0
+                tranche_id = 0
             else:
-                # Create new position
+                # Check if any existing tranche has realized PnL <= -5%
+                # If so, create new tranche; else add to one with best PnL (to avoid averaging too much)
+                has_deep_loss = any(
+                    ((price - p.entry_price) / p.entry_price * 100 if side == 'LONG' else (p.entry_price - price) / p.entry_price * 100) <= -5.0
+                    for p in tranches.values()
+                )
+
+                if has_deep_loss or len(tranches) >= self.max_tranches_per_key:
+                    tranche_id = max(tranches.keys()) + 1
+                    logger.info(f"Creating new tranche {tranche_id} for {key} due to deep loss or max tranches")
+                else:
+                    # Add to tranche with highest PnL (least loss)
+                    tranche_id = max(tranches.items(), key=lambda x: x[1].unrealized_pnl)[0]
+                    logger.info(f"Adding fill to existing tranche {tranche_id} for {key}")
+
+            if tranche_id in tranches:
+                # Update existing tranche by averaging entry
+                existing = tranches[tranche_id]
+                total_qty = existing.quantity + quantity
+                weighted_entry = (existing.quantity * existing.entry_price + quantity * price) / total_qty
+
+                existing.quantity = total_qty
+                existing.entry_price = weighted_entry
+                existing.current_price = price
+                existing.position_value_usdt = total_qty * price
+                existing.unrealized_pnl = (price - weighted_entry) * total_qty if side == 'LONG' else (weighted_entry - price) * total_qty
+                existing.last_updated = time.time()
+
+                logger.info(f"Updated tranche {tranche_id} for {key}: qty={total_qty}, entry={weighted_entry:.6f}, PnL={existing.unrealized_pnl:.2f}")
+            else:
+                # New tranche
+                position_value = quantity * price
                 position = Position(
                     symbol=symbol,
                     side=side,
@@ -189,25 +219,37 @@ class PositionManager:
                     leverage=leverage,
                     margin_used=position_value / leverage if leverage > 0 else position_value
                 )
-                self.positions[symbol] = position
-                logger.info(f"Opened position {symbol} {side}: {quantity}@{price}")
+                position.unrealized_pnl = 0.0  # New fill, assume no PnL yet
+                tranches[tranche_id] = position
+                logger.info(f"Created new tranche {tranche_id} for {key}: {quantity}@{price}")
+
+            return key
+
+    def update_position(self, symbol: str, side: str, quantity: float,
+                       price: float, leverage: int = 1) -> str:
+        """
+        Legacy method - now calls add_fill_to_position for backward compatibility.
+        """
+        return self.add_fill_to_position(symbol, side, quantity, price, leverage)
 
     def close_position(self, symbol: str) -> Optional[Position]:
         """
-        Close and remove a position.
+        Close all tranches for a symbol/side key.
 
         Args:
-            symbol: Trading symbol
+            symbol: Symbol/side key
 
         Returns:
             Closed position or None
         """
         with self.lock:
             if symbol in self.positions:
-                position = self.positions[symbol]
+                total_pnl = sum(p.unrealized_pnl for p in self.positions[symbol].values())
                 del self.positions[symbol]
-                logger.info(f"Closed position {symbol}, PnL={position.unrealized_pnl:.2f}")
-                return position
+                logger.info(f"Closed all positions for {symbol}, total PnL={total_pnl:.2f}")
+                # Return a dummy position for compatibility
+                return Position(symbol=symbol.split('_')[0], side=symbol.split('_')[1] if '_' in symbol else 'UNKNOWN',
+                              quantity=0, entry_price=0, current_price=0, position_value_usdt=0, unrealized_pnl=total_pnl)
             return None
 
     def update_price(self, symbol: str, price: float) -> None:
@@ -247,13 +289,16 @@ class PositionManager:
 
     def get_all_positions(self) -> List[Position]:
         """
-        Get all current positions.
+        Get all current positions (all tranches).
 
         Returns:
             List of positions
         """
         with self.lock:
-            return list(self.positions.values())
+            all_pos = []
+            for tranches in self.positions.values():
+                all_pos.extend(tranches.values())
+            return all_pos
 
     def get_total_exposure(self) -> float:
         """
@@ -263,7 +308,7 @@ class PositionManager:
             Total exposure in USDT
         """
         with self.lock:
-            return sum(abs(p.position_value_usdt) for p in self.positions.values())
+            return sum(abs(p.position_value_usdt) for tranches in self.positions.values() for p in tranches.values())
 
     def get_total_unrealized_pnl(self) -> float:
         """
@@ -273,7 +318,7 @@ class PositionManager:
             Total unrealized PnL in USDT
         """
         with self.lock:
-            return sum(p.unrealized_pnl for p in self.positions.values())
+            return sum(p.unrealized_pnl for tranches in self.positions.values() for p in tranches.values())
 
     def get_stats(self) -> Dict[str, any]:
         """
@@ -285,14 +330,17 @@ class PositionManager:
         with self.lock:
             positions_by_side = {'LONG': 0, 'SHORT': 0}
             total_margin = 0.0
+            total_tranches = 0
 
-            for position in self.positions.values():
-                positions_by_side[position.side] = positions_by_side.get(position.side, 0) + 1
-                total_margin += position.margin_used
+            for key, tranches in self.positions.items():
+                for p in tranches.values():
+                    positions_by_side[p.side] = positions_by_side.get(p.side, 0) + 1
+                    total_margin += p.margin_used
+                    total_tranches += 1
 
             return {
-                'total_positions': len(self.positions),
-                'positions_by_symbol': list(self.positions.keys()),
+                'total_tranches': total_tranches,
+                'position_keys': list(self.positions.keys()),
                 'positions_by_side': positions_by_side,
                 'total_position_value_usdt': self.get_total_exposure(),
                 'total_unrealized_pnl': self.get_total_unrealized_pnl(),
@@ -321,16 +369,18 @@ class PositionManager:
             if exposure_pct > 80:
                 warnings.append(f"High total exposure: {exposure_pct:.1f}% of limit")
 
-            # Check individual position limits
-            for symbol, position in self.positions.items():
+            # Check individual position limits (by symbol, sum tranches)
+            for key, tranches in self.positions.items():
+                symbol = key.split('_')[0]
                 symbol_limit = self.max_position_usdt_per_symbol.get(symbol, float('inf'))
-                position_pct = (abs(position.position_value_usdt) / symbol_limit * 100) if symbol_limit < float('inf') else 0
+                position_pct = (sum(abs(p.position_value_usdt) for p in tranches.values()) / symbol_limit * 100) if symbol_limit < float('inf') else 0
 
                 if position_pct > 80:
                     warnings.append(f"High {symbol} exposure: {position_pct:.1f}% of limit")
 
-                # Check PnL
-                if position.unrealized_pnl < -100:
-                    warnings.append(f"{symbol} has significant loss: {position.unrealized_pnl:.2f} USDT")
+                # Check total PnL for key
+                total_pnl = sum(p.unrealized_pnl for p in tranches.values())
+                if total_pnl < -100:
+                    warnings.append(f"{key} has significant loss: {total_pnl:.2f} USDT")
 
         return warnings
