@@ -3,7 +3,7 @@
 
 import sqlite3
 import sys
-from config import config
+from src.utils.config import config
 
 def migrate_database():
     """Add new columns to existing database for TP/SL tracking"""

@@ -1,8 +1,8 @@
 import asyncio
-from config import config
-from db import get_volume_in_window, get_usdt_volume_in_window, insert_trade, get_db_conn, insert_order_relationship
-from auth import make_authenticated_request
-from utils import log
+from src.utils.config import config
+from src.database.db import get_volume_in_window, get_usdt_volume_in_window, insert_trade, get_db_conn, insert_order_relationship
+from src.utils.auth import make_authenticated_request
+from src.utils.utils import log
 import json
 import math
 import time

@@ -13,8 +13,8 @@ from flask_cors import CORS
 from collections import deque
 import requests
 from dotenv import load_dotenv
-from auth import make_authenticated_request
-from pnl_tracker import PNLTracker
+from src.utils.auth import make_authenticated_request
+from src.api.pnl_tracker import PNLTracker
 
 # Load environment variables
 load_dotenv()
@@ -23,8 +23,8 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-DB_PATH = 'bot.db'
-SETTINGS_PATH = 'settings.json'
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'bot.db')
+SETTINGS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'settings.json')
 API_KEY = os.getenv('API_KEY')
 API_SECRET = os.getenv('API_SECRET')
 BASE_URL = 'https://fapi.asterdex.com'

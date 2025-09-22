@@ -3,7 +3,15 @@
     "allow": [
       "Bash(python:*)",
       "Bash(timeout:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(move trader_backup.py trader_new.py trader_updated.py backups/)",
+      "Bash(tasklist)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(copy bot.db databot.db)",
+      "Bash(copy bot.log databot.log)",
+      "Bash(copy liquidations.db dataliquidations.db)",
+      "Bash(copy trades.db datatrades.db)"
     ],
     "deny": [],
     "ask": []

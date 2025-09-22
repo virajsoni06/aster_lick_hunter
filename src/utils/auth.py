@@ -3,7 +3,7 @@ import hmac
 import hashlib
 import time
 import urllib.parse
-from config import config
+from src.utils.config import config
 
 def create_signature(query_string, secret):
     """Create HMAC SHA256 signature."""

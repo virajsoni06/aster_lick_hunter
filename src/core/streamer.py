@@ -1,9 +1,9 @@
 import asyncio
 import json
 import websockets
-from config import config
-from db import insert_liquidation, get_db_conn
-from utils import log
+from src.utils.config import config
+from src.database.db import insert_liquidation, get_db_conn
+from src.utils.utils import log
 
 class LiquidationStreamer:
     def __init__(self, message_handler):

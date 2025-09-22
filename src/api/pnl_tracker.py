@@ -7,11 +7,14 @@ import sqlite3
 import time
 import json
 from datetime import datetime, timedelta
-from auth import make_authenticated_request
-from config import config
+from src.utils.auth import make_authenticated_request
+from src.utils.config import config
 
 class PNLTracker:
-    def __init__(self, db_path='bot.db'):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            import os
+            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'bot.db')
         self.db_path = db_path
         self.base_url = 'https://fapi.asterdex.com'
         self.init_database()

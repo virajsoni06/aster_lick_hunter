@@ -8,8 +8,8 @@ import json
 import time
 import logging
 from typing import Optional, Callable
-from auth import make_authenticated_request
-from config import config
+from src.utils.auth import make_authenticated_request
+from src.utils.config import config
 
 logger = logging.getLogger(__name__)
 

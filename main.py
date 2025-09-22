@@ -1,12 +1,12 @@
 import asyncio
 import signal
-from config import config
-from db import init_db, get_db_conn
-from streamer import LiquidationStreamer
-from trader import init_symbol_settings, evaluate_trade
-from order_cleanup import OrderCleanup
-from user_stream import UserDataStream
-from utils import log
+from src.utils.config import config
+from src.database.db import init_db, get_db_conn
+from src.core.streamer import LiquidationStreamer
+from src.core.trader import init_symbol_settings, evaluate_trade
+from src.core.order_cleanup import OrderCleanup
+from src.core.user_stream import UserDataStream
+from src.utils.utils import log
 
 def main():
     """Main entry point for the bot."""

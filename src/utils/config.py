@@ -10,7 +10,9 @@ class Config:
     API_SECRET = os.getenv('API_SECRET', 'your_api_secret_here')  # Associated secret
 
     # Trading Configs from settings.json (globals + symbols)
-    with open('settings.json', 'r') as f:
+    # Use absolute path from project root
+    settings_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'settings.json')
+    with open(settings_path, 'r') as f:
         settings = json.load(f)
         GLOBAL_SETTINGS = settings['globals']
         SYMBOL_SETTINGS = settings['symbols']
@@ -30,7 +32,9 @@ class Config:
 
     @property
     def DB_PATH(self):
-        return self.GLOBAL_SETTINGS.get('db_path', 'bot.db')
+        db_name = self.GLOBAL_SETTINGS.get('db_path', 'bot.db')
+        # Use data folder for database
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', db_name)
 
     # Aster DEX endpoints
     BASE_URL = 'https://fapi.asterdex.com'

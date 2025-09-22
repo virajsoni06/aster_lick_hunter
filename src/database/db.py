@@ -1,6 +1,6 @@
 import sqlite3
 import time
-from config import config
+from src.utils.config import config
 
 def init_db(db_path):
     """Initialize the SQLite database with tables."""

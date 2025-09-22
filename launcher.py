@@ -43,7 +43,7 @@ def run_dashboard():
     """Run the Flask dashboard."""
     print("[Launcher] Starting Dashboard API Server...")
     process = subprocess.Popen(
-        [sys.executable, "api_server.py"],
+        [sys.executable, "src/api/api_server.py"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
@@ -67,7 +67,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     # Check for required files
-    required_files = ['main.py', 'api_server.py', 'settings.json', '.env']
+    required_files = ['main.py', 'src/api/api_server.py', 'settings.json', '.env']
     for file in required_files:
         if not os.path.exists(file):
             print(f"[Launcher] Error: Required file '{file}' not found!")

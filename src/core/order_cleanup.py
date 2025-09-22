@@ -7,9 +7,9 @@ import time
 import logging
 import sqlite3
 from typing import List, Dict, Optional, Set
-from auth import make_authenticated_request
-from config import config
-from db import insert_order_relationship, get_db_conn
+from src.utils.auth import make_authenticated_request
+from src.utils.config import config
+from src.database.db import insert_order_relationship, get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -368,7 +368,7 @@ class OrderCleanup:
 
         try:
             # Get all positions with full info including entry price
-            from config import config as cfg
+            from src.utils.config import config as cfg
             url = f"{cfg.BASE_URL}/fapi/v2/positionRisk"
             response = make_authenticated_request('GET', url)
 
@@ -413,7 +413,7 @@ class OrderCleanup:
                 symbol_orders[symbol][side_key].append(order_type)
 
             # Import format_price from trader which has the cached symbol specs
-            from trader import format_price
+            from src.core.trader import format_price
 
             # Check each position for missing TP/SL
             for pos_key, pos_detail in position_details.items():
@@ -470,7 +470,7 @@ class OrderCleanup:
                         tp_side = 'BUY'
 
                     # Format price properly for the symbol
-                    from trader import format_price
+                    from src.core.trader import format_price
                     formatted_tp_price = format_price(symbol, tp_price)
 
                     tp_order = {
