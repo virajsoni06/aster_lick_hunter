@@ -19,7 +19,7 @@ python main.py
 python launcher.py
 
 # Run dashboard only
-python api_server.py
+python src/api/api_server.py
 ```
 
 Dashboard available at: http://localhost:5000
@@ -29,46 +29,53 @@ Dashboard available at: http://localhost:5000
 The bot is configured through two main files:
 - `.env`: Contains API credentials (API_KEY, API_SECRET)
 - `settings.json`: Contains trading parameters:
-  - Global settings: volume_window_sec, simulate_only, db_path, multi_assets_mode, hedge_mode, order_ttl_seconds
-  - Per-symbol settings: volume_threshold, leverage, margin_type, trade_side, trade_value_usdt, price_offset_pct, hedge_position_side, max_position_usdt, TP/SL settings
+  - Global settings: volume_window_sec, simulate_only, db_path, multi_assets_mode, hedge_mode, order_ttl_seconds, max_open_orders_per_symbol, max_total_exposure_usdt, rate_limit_buffer_pct, time_in_force
+  - Per-symbol settings: volume_threshold, leverage, margin_type, trade_side, trade_value_usdt, price_offset_pct, max_position_usdt, take_profit/stop_loss settings, working_type, price_protect
 
 ## Architecture
 
 ### Core Components
 
-1. **WebSocket Streaming (`streamer.py`)**
+1. **WebSocket Streaming (`src/core/streamer.py`)**
    - Connects to `wss://fstream.asterdex.com/stream`
    - Subscribes to `!forceOrder@arr` liquidation stream
    - Processes incoming liquidation events and stores them in database
    - Triggers trade evaluation for each liquidation
 
-2. **Trading Logic (`trader.py`)**
+2. **Trading Logic (`src/core/trader.py`)**
    - Evaluates liquidations against volume thresholds (USDT or token volume)
    - Places counter-trades when thresholds are met with orderbook-based pricing
    - Supports hedge mode with separate LONG/SHORT positions
    - Automatically places Take Profit and Stop Loss orders after entry fills
    - Calculates position sizes from trade_value_usdt * leverage
+   - Caches exchange info and symbol specifications for precision handling
 
-3. **Database Layer (`db.py`)**
-   - SQLite database with tables: `liquidations`, `trades`, `order_relationships`
+3. **Database Layer (`src/database/db.py`)**
+   - SQLite database with tables: `liquidations`, `trades`, `order_relationships`, `order_status`, `positions`
    - Tracks all liquidation events with USDT value calculations
    - Records trade attempts with order type and parent order tracking
    - Provides volume aggregation queries for threshold checking
+   - Indexed tables for efficient queries
 
-4. **Order Management (`order_cleanup.py`)**
+4. **Order Management (`src/core/order_cleanup.py`)**
    - Background service that monitors and cancels stale limit orders
    - Cancels related TP/SL orders when main orders are canceled
    - Configurable cleanup interval and stale order timeout
 
-5. **User Data Stream (`user_stream.py`)**
+5. **User Data Stream (`src/core/user_stream.py`)**
    - Monitors real-time position updates via WebSocket
    - Handles order fills and position changes
    - Integrates with order cleanup for automated management
 
-6. **Authentication (`auth.py`)**
+6. **Authentication (`src/utils/auth.py`)**
    - HMAC SHA256 signature-based authentication
    - All API requests go through `make_authenticated_request()`
    - Handles GET, POST, and DELETE requests with proper signing
+
+7. **PNL Tracker (`src/api/pnl_tracker.py`)**
+   - Tracks realized and unrealized P&L for positions
+   - Calculates trade performance metrics
+   - Integrates with dashboard for real-time P&L display
 
 ### Data Flow
 
@@ -76,7 +83,7 @@ The bot is configured through two main files:
 2. Liquidation stored in database → `db.insert_liquidation()`
 3. Trade evaluation triggered → `trader.evaluate_trade()`
 4. Volume check performed → `db.get_usdt_volume_in_window()` or `db.get_volume_in_window()`
-5. If threshold met, calculate position size from collateral * leverage
+5. If threshold met, calculate position size from trade_value_usdt * leverage
 6. Place limit order with orderbook pricing → `trader.place_order()`
 7. Monitor for fill, then place TP/SL orders → `trader.place_tp_sl_orders()`
 8. Trade and relationships recorded in database
@@ -94,13 +101,16 @@ The bot is configured through two main files:
 - Place Order: `POST /fapi/v1/order`
 - Batch Orders: `POST /fapi/v1/batchOrders`
 - Cancel Order: `DELETE /fapi/v1/order`
+- Listen Key: `POST/PUT/DELETE /fapi/v1/listenKey`
 
 ## Database Schema
 
 The bot uses SQLite with indexed tables for performance:
 - `liquidations`: Tracks all liquidation events with USDT value
-- `trades`: Records all trading attempts with order type and parent tracking
+- `trades`: Records all trading attempts with order type, parent tracking, and PNL data
 - `order_relationships`: Maps main orders to their TP/SL orders
+- `order_status`: Tracks order lifecycle from placement to fill/cancel
+- `positions`: Current position tracking with entry prices and quantities
 - All tables indexed for efficient queries
 
 ## Simulation Mode
@@ -114,7 +124,7 @@ When `simulate_only: true` in settings.json:
 
 ### Frontend Components
 
-1. **Dashboard API (`api_server.py`)**
+1. **Dashboard API (`src/api/api_server.py`)**
    - Flask server running on port 5000
    - RESTful API endpoints for positions, trades, liquidations, and statistics
    - Server-sent events (SSE) for real-time updates
@@ -145,7 +155,8 @@ When `simulate_only: true` in settings.json:
 - `GET /api/positions`: Current exchange positions
 - `GET /api/account`: Account balance information
 - `GET /api/liquidations`: Recent liquidation events
-- `GET /api/trades`: Trade history with filtering
+- `GET /api/trades`: Trade history with filtering and PNL data
+- `GET /api/trades/<order_id>`: Detailed trade view with order relationships
 - `GET /api/stats`: Aggregated statistics
 - `GET /api/config`: Get current configuration
 - `POST /api/config`: Update configuration
