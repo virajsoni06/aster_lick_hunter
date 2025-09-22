@@ -520,11 +520,11 @@ async def monitor_and_place_tp_sl(order_id, tp_sl_params):
             log.error(f"Cannot cancel order {order_id}: symbol is missing or None")
             return
 
-        cancel_params = {'symbol': symbol, 'orderId': order_id}
+        cancel_params = {'symbol': symbol, 'orderId': str(order_id)}
         log.debug(f"Canceling order with params: {cancel_params}")
 
         cancel_response = make_authenticated_request('DELETE', f"{config.BASE_URL}/fapi/v1/order",
-                                                    params=cancel_params)
+                                                    cancel_params)
         if cancel_response.status_code == 200:
             log.info(f"Canceled stale limit order {order_id} for {symbol}")
         else:

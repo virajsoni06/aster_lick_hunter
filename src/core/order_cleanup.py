@@ -152,12 +152,22 @@ class OrderCleanup:
             True if successfully canceled or order already doesn't exist
         """
         try:
+            # Validate parameters
+            if not symbol:
+                logger.error(f"Cannot cancel order {order_id}: symbol is missing or None")
+                return False
+
+            if not order_id:
+                logger.error(f"Cannot cancel order for {symbol}: order_id is missing or None")
+                return False
+
             url = f"{config.BASE_URL}/fapi/v1/order"
             params = {
-                'symbol': symbol,
-                'orderId': order_id
+                'symbol': str(symbol),
+                'orderId': str(order_id)
             }
 
+            logger.debug(f"Canceling order with params: {params}")
             response = make_authenticated_request('DELETE', url, params)
 
             if response.status_code == 200:
