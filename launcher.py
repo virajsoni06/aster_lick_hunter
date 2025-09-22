@@ -42,12 +42,18 @@ def run_bot():
 def run_dashboard():
     """Run the Flask dashboard."""
     print("[Launcher] Starting Dashboard API Server...")
+
+    # Get the current directory to ensure proper module path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
     process = subprocess.Popen(
         [sys.executable, "src/api/api_server.py"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
-        bufsize=1
+        bufsize=1,
+        cwd=current_dir,  # Set working directory
+        env={**os.environ, 'PYTHONPATH': current_dir}  # Add to Python path
     )
     processes.append(process)
 

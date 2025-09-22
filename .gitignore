@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+.claude/
+
 
 
 # Python
@@ -50,3 +52,7 @@ build/
 config.ini
 secrets.json
 credentials.json
+
+#CLAUDE
+CLAUDE.md
+claude/

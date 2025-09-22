@@ -6,6 +6,7 @@ import json
 import sqlite3
 import time
 import os
+import sys
 import threading
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, render_template, Response, stream_with_context
@@ -13,13 +14,25 @@ from flask_cors import CORS
 from collections import deque
 import requests
 from dotenv import load_dotenv
+
+# Add parent directory to path to allow imports when run as script
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from src.utils.auth import make_authenticated_request
 from src.api.pnl_tracker import PNLTracker
 
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__)
+# Configure Flask with proper template and static paths
+template_dir = os.path.join(parent_dir, 'templates')
+static_dir = os.path.join(parent_dir, 'static')
+
+app = Flask(__name__,
+            template_folder=template_dir,
+            static_folder=static_dir)
 CORS(app)
 
 # Configuration
