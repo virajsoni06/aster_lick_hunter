@@ -32,8 +32,8 @@ class UserDataStream:
         """
         self.order_manager = order_manager
         self.position_manager = position_manager
-        # Database connection no longer stored - use fresh connections instead
-        self.db_path = getattr(db_conn, 'db_path', 'bot.db') if db_conn else 'bot.db'
+        # Use config DB_PATH consistently
+        self.db_path = config.DB_PATH
         self.order_cleanup = order_cleanup
 
         self.ws_url = "wss://fstream.asterdex.com/ws/"
