@@ -32,7 +32,8 @@ class UserDataStream:
         """
         self.order_manager = order_manager
         self.position_manager = position_manager
-        self.db_conn = db_conn
+        # Database connection no longer stored - use fresh connections instead
+        self.db_path = getattr(db_conn, 'db_path', 'bot.db') if db_conn else 'bot.db'
         self.order_cleanup = order_cleanup
 
         self.ws_url = "wss://fstream.asterdex.com/ws/"
@@ -181,7 +182,7 @@ class UserDataStream:
             self.order_manager.update_order_status(order_id, status, filled_qty)
 
         # Update database
-        if self.db_conn:
+        if self.db_path:
             # Import the functions we need
             from db import update_trade_on_fill, insert_order_status, update_order_filled, update_order_canceled
             use_new_db = True
@@ -189,9 +190,11 @@ class UserDataStream:
             if use_new_db:
                 # Use the new update_trade_on_fill function
                 if status in ['FILLED', 'PARTIALLY_FILLED']:
+                    import sqlite3
+                    conn = sqlite3.connect(self.db_path)
                     # Update trade with fill information
                     rows_updated = update_trade_on_fill(
-                        self.db_conn,
+                        conn,
                         order_id=order_id,
                         trade_id=trade_id,
                         status=status,
@@ -207,7 +210,7 @@ class UserDataStream:
                         # This can happen if the order was placed before our tracking started
                         from db import insert_trade
                         insert_trade(
-                            self.db_conn,
+                            conn,
                             symbol=symbol,
                             order_id=order_id,
                             side=side,
@@ -218,7 +221,7 @@ class UserDataStream:
                         )
                         # Then update with fill details
                         update_trade_on_fill(
-                            self.db_conn,
+                            conn,
                             order_id=order_id,
                             trade_id=trade_id,
                             status=status,
@@ -227,21 +230,30 @@ class UserDataStream:
                             realized_pnl=realized_pnl,
                             commission=-abs(commission_amount) if commission_amount else None
                         )
+                    conn.commit()
+                    conn.close()
 
                 elif status == 'CANCELED':
                     # Just update status to canceled
-                    cursor = self.db_conn.cursor()
+                    import sqlite3
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
                     cursor.execute('UPDATE trades SET status = ? WHERE order_id = ?', ('CANCELED', order_id))
-                    self.db_conn.commit()
+                    conn.commit()
+                    conn.close()
 
             else:
                 # Fallback to old db_updated methods
+                import sqlite3
+                conn = sqlite3.connect(self.db_path)
                 if status == 'FILLED':
-                    update_order_filled(self.db_conn, order_id, filled_qty)
+                    update_order_filled(conn, order_id, filled_qty)
                 elif status == 'CANCELED':
-                    update_order_canceled(self.db_conn, order_id)
+                    update_order_canceled(conn, order_id)
                 else:
-                    insert_order_status(self.db_conn, order_id, symbol, side, quantity, price, position_side, status)
+                    insert_order_status(conn, order_id, symbol, side, quantity, price, position_side, status)
+                conn.commit()
+                conn.close()
 
         # Update position manager when order fills
         if status == 'FILLED' and self.position_manager:
@@ -277,10 +289,14 @@ class UserDataStream:
                     self.position_manager.update_position(symbol, side, abs(position_amount), entry_price)
 
                 # Update database
-                if self.db_conn:
+                if self.db_path:
                     from db import insert_or_update_position
+                    import sqlite3
+                    conn = sqlite3.connect(self.db_path)
                     side = 'LONG' if position_amount > 0 else 'SHORT'
-                    insert_or_update_position(self.db_conn, symbol, side, abs(position_amount), entry_price, entry_price)
+                    insert_or_update_position(conn, symbol, side, abs(position_amount), entry_price, entry_price)
+                    conn.commit()
+                    conn.close()
             else:
                 # Position closed
                 logger.info(f"Position closed for {symbol}")
@@ -288,9 +304,13 @@ class UserDataStream:
                 if self.position_manager:
                     self.position_manager.close_position(symbol)
 
-                if self.db_conn:
+                if self.db_path:
                     from db import delete_position
-                    delete_position(self.db_conn, symbol)
+                    import sqlite3
+                    conn = sqlite3.connect(self.db_path)
+                    delete_position(conn, symbol)
+                    conn.commit()
+                    conn.close()
 
                 # Cleanup orphaned TP/SL orders when position closes
                 if self.order_cleanup:

@@ -10,7 +10,7 @@ class LiquidationStreamer:
         self.ws_url = config.WS_URL
         self.stream = config.LIQUIDATION_STREAM
         self.message_handler = message_handler
-        self.conn = get_db_conn()
+        # Database connection no longer stored - use fresh connections instead
 
     async def subscribe(self, websocket):
         """Send subscription message to include the stream."""
@@ -60,7 +60,11 @@ class LiquidationStreamer:
         price = float(liquidation['p']) if liquidation['p'] != '0' else 0.0  #Avg price or 0
         usdt_value = qty * price  # Calculate USDT value
 
-        insert_liquidation(self.conn, symbol, side, qty, price)
+        # Use fresh database connection
+        conn = get_db_conn()
+        insert_liquidation(conn, symbol, side, qty, price)
+        conn.commit()
+        conn.close()
 
         # Determine position type that was liquidated
         position_type = "Long" if side == "SELL" else "Short"

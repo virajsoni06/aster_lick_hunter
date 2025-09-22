@@ -254,14 +254,36 @@ def get_orders_for_symbol(conn, symbol):
                   (symbol,))
     return cursor.fetchall()
 
-# Global connection (can be improved with better management)
-_db_conn = None
-
+# Database connection management
+# Each call returns a fresh connection to avoid "closed database" errors
 def get_db_conn():
-    global _db_conn
-    if _db_conn is None:
-        _db_conn = init_db(config.DB_PATH)
-    return _db_conn
+    """
+    Returns a fresh database connection.
+    Each caller gets their own connection to prevent interference.
+    Callers are responsible for closing the connection when done.
+    """
+    return sqlite3.connect(config.DB_PATH)
+
+# Context manager for safer database operations
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_connection():
+    """
+    Context manager for database connections.
+    Automatically handles connection closing even if an error occurs.
+
+    Usage:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(...)
+            conn.commit()
+    """
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def insert_order_status(conn, order_id, symbol, side, quantity, price, position_side, status):
     """Insert or update order status tracking."""

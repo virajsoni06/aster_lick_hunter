@@ -5,9 +5,11 @@ Order cleanup module for managing orphaned and stale orders.
 import asyncio
 import time
 import logging
+import sqlite3
 from typing import List, Dict, Optional, Set
 from auth import make_authenticated_request
 from config import config
+from db import insert_order_relationship, get_db_conn
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ class OrderCleanup:
             cleanup_interval_seconds: How often to run cleanup (default 20 seconds)
             stale_limit_order_minutes: Age in minutes before limit order is considered stale
         """
-        self.db = db_conn
+        # Database connection no longer stored - use fresh connections instead
         self.cleanup_interval_seconds = cleanup_interval_seconds
         self.stale_limit_order_seconds = stale_limit_order_minutes * 60
         self.running = False
@@ -122,6 +124,10 @@ class OrderCleanup:
                             }
 
                 logger.debug(f"Found {len(positions)} position entries (hedge_mode={'on' if config.GLOBAL_SETTINGS.get('hedge_mode', False) else 'off'})")
+                # Log position details for debugging
+                for key, pos_data in positions.items():
+                    if pos_data.get('has_position', False):
+                        logger.debug(f"  {key}: amount={pos_data.get('amount', 0)}, side={pos_data.get('side', 'N/A')}")
                 return positions
             else:
                 logger.error(f"Failed to get positions: {response.text}")
@@ -165,6 +171,41 @@ class OrderCleanup:
             logger.error(f"Error canceling order {order_id}: {e}")
             return False
 
+    def is_order_related_to_position(self, order_id: str, symbol: str) -> bool:
+        """
+        Check if an order is related to an active position via order_relationships.
+
+        Args:
+            order_id: Order ID to check
+            symbol: Trading symbol
+
+        Returns:
+            True if order is related to a position
+        """
+        try:
+            conn = sqlite3.connect(config.DB_PATH)
+            cursor = conn.cursor()
+
+            # Check if this order is tracked as a TP or SL order
+            cursor.execute('''
+                SELECT main_order_id, tp_order_id, sl_order_id
+                FROM order_relationships
+                WHERE (tp_order_id = ? OR sl_order_id = ?) AND symbol = ?
+            ''', (order_id, order_id, symbol))
+
+            result = cursor.fetchone()
+            conn.close()
+
+            if result:
+                order_type = "TP" if str(result[1]) == str(order_id) else "SL"
+                logger.debug(f"Order {order_id} is a {order_type} order related to main order {result[0]}")
+                return True
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking order relationship for {order_id}: {e}")
+            return False
+
     async def cleanup_orphaned_tp_sl(self, positions: Dict[str, Dict]) -> int:
         """
         Cancel TP/SL orders that don't have matching positions.
@@ -206,6 +247,13 @@ class OrderCleanup:
                     logger.debug(f"Skipping young {order_type} order {order_id} for {symbol} (age: {order_age_seconds:.1f}s)")
                     continue
 
+                # First check if this order is tracked in our order relationships
+                is_tracked = self.is_order_related_to_position(order_id, symbol)
+                if is_tracked:
+                    # This is a tracked TP/SL order, skip cancellation even if no position
+                    logger.debug(f"Order {order_id} is a tracked TP/SL order, will not cancel")
+                    continue  # Skip this order entirely
+
                 # Check if there's a matching position
                 should_cancel = False
 
@@ -216,27 +264,39 @@ class OrderCleanup:
                         side_key = f"{symbol}_{position_side}"
                         side_position = positions.get(side_key)
 
+                        # Also check if there's any position for this symbol (regardless of side)
+                        has_any_position = False
+                        for key in positions:
+                            if key.startswith(f"{symbol}_") and positions[key].get('has_position', False):
+                                has_any_position = True
+                                break
+
                         if not side_position or not side_position.get('has_position', False):
-                            # No position for this specific side
-                            should_cancel = True
-                            logger.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
+                            # No position for this specific side and not already tracked
+                            if not has_any_position:
+                                # No position exists at all for this symbol
+                                should_cancel = True
+                                logger.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
                     else:
                         # BOTH position side in hedge mode - check if any position exists
                         position = positions.get(symbol)
                         if not position or not position.get('has_position', False):
+                            # No position exists for this symbol
                             should_cancel = True
                             logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
                 else:
                     # One-way mode
                     position = positions.get(symbol)
                     if not position or not position.get('has_position', False):
+                        # No position exists for this symbol
                         should_cancel = True
                         logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
 
                 if should_cancel:
                     # Additional safety check: Query database for recent main orders
                     # Don't cancel if there was a recently filled main order
-                    cursor = self.db.cursor()
+                    conn = sqlite3.connect(config.DB_PATH)
+                    cursor = conn.cursor()
                     cursor.execute("""
                         SELECT COUNT(*) FROM trades
                         WHERE symbol = ?
@@ -246,6 +306,7 @@ class OrderCleanup:
                     """, (symbol, current_time - 300000))  # Last 5 minutes
 
                     recent_fills = cursor.fetchone()[0]
+                    conn.close()
                     if recent_fills > 0:
                         logger.info(f"Skipping cancellation of {order_type} order {order_id} - found recent fills for {symbol}")
                         continue
@@ -280,6 +341,11 @@ class OrderCleanup:
                 age_seconds = (current_time - order_time) / 1000
 
                 if age_seconds > self.stale_limit_order_seconds:
+                    # Check if this LIMIT order is actually a tracked TP/SL order
+                    if self.is_order_related_to_position(order_id, symbol):
+                        logger.info(f"Skipping tracked TP/SL limit order {order_id} for {symbol} (age: {age_seconds:.0f}s)")
+                        continue
+
                     logger.warning(f"Found stale limit order {order_id} for {symbol}, age: {age_seconds:.0f}s")
 
                     if await self.cancel_order(symbol, order_id):
@@ -298,6 +364,7 @@ class OrderCleanup:
             Number of missing orders repaired
         """
         repaired_count = 0
+        recovery_orders_to_track = []  # Collect all recovery orders for batch storage
 
         try:
             # Get all positions with full info including entry price
@@ -491,27 +558,94 @@ class OrderCleanup:
 
                         if resp.status_code == 200:
                             results = resp.json()
+                            tp_order_id = None
+                            sl_order_id = None
                             for i, result in enumerate(results):
                                 if 'orderId' in result:
-                                    logger.info(f"Successfully placed recovery {orders_to_place[i]['type']} order {result['orderId']} for {symbol}")
+                                    order_id = str(result['orderId'])
+                                    order_type = orders_to_place[i]['type']
+                                    logger.info(f"Successfully placed recovery {order_type} order {order_id} for {symbol}")
                                     repaired_count += 1
+
+                                    # Track the order IDs for relationship storage
+                                    # Recovery orders are LIMIT orders, track as TP
+                                    # (In current usage, recovery orders are always TP orders)
+                                    if not tp_order_id:
+                                        tp_order_id = order_id
+                                    else:
+                                        sl_order_id = order_id
                                 else:
                                     logger.error(f"Failed to place recovery order: {result}")
+
+                            # Collect recovery orders for batch storage
+                            if tp_order_id or sl_order_id:
+                                recovery_orders_to_track.append({
+                                    'symbol': symbol,
+                                    'position_side': position_side,
+                                    'tp_order_id': tp_order_id,
+                                    'sl_order_id': sl_order_id,
+                                    'timestamp': int(time.time())
+                                })
+                                logger.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
                         else:
                             logger.error(f"Failed to place recovery orders: {resp.text}")
                     else:
                         # Single order
+                        tp_order_id = None
+                        sl_order_id = None
                         for order in orders_to_place:
                             resp = make_authenticated_request('POST', f"{cfg.BASE_URL}/fapi/v1/order", data=order)
                             if resp.status_code == 200:
                                 result = resp.json()
-                                logger.info(f"Successfully placed recovery {order['type']} order {result.get('orderId')} for {symbol}")
+                                order_id = str(result.get('orderId'))
+                                order_type = order['type']
+                                logger.info(f"Successfully placed recovery {order_type} order {order_id} for {symbol}")
                                 repaired_count += 1
+
+                                # Track the order ID for relationship storage
+                                # Recovery orders are LIMIT orders used as TP orders
+                                # Based on logs, these are always TP orders
+                                tp_order_id = order_id
                             else:
                                 logger.error(f"Failed to place recovery order: {resp.text}")
+
+                        # Collect recovery order for batch storage
+                        if tp_order_id or sl_order_id:
+                            recovery_orders_to_track.append({
+                                'symbol': symbol,
+                                'position_side': position_side,
+                                'tp_order_id': tp_order_id,
+                                'sl_order_id': sl_order_id,
+                                'timestamp': int(time.time())
+                            })
+                            logger.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
                 elif orders_to_place and cfg.SIMULATE_ONLY:
                     logger.info(f"SIMULATE: Would place {len(orders_to_place)} recovery orders for {symbol}")
                     repaired_count += len(orders_to_place)
+
+            # Batch store all recovery order relationships
+            if recovery_orders_to_track:
+                logger.info(f"Storing {len(recovery_orders_to_track)} recovery order relationships")
+                for recovery_order in recovery_orders_to_track:
+                    try:
+                        # Create a fresh connection for each operation
+                        conn = sqlite3.connect(config.DB_PATH)
+                        insert_order_relationship(
+                            conn,
+                            f"recovery_{recovery_order['symbol']}_{recovery_order['timestamp']}",
+                            recovery_order['symbol'],
+                            recovery_order['position_side'],
+                            recovery_order['tp_order_id'],
+                            recovery_order['sl_order_id']
+                        )
+                        conn.commit()
+                        conn.close()
+                        logger.info(f"Stored recovery order relationship for {recovery_order['symbol']}: "
+                                  f"tp={recovery_order['tp_order_id']}, sl={recovery_order['sl_order_id']}")
+                    except Exception as e:
+                        logger.error(f"Error storing recovery order relationship for {recovery_order['symbol']}: {e}")
+                        # Continue with next order even if one fails
+                        continue
 
             if repaired_count > 0:
                 logger.info(f"Repaired {repaired_count} missing TP/SL orders")
@@ -659,12 +793,16 @@ class OrderCleanup:
             order_id: Order ID that was canceled
         """
         try:
-            cursor = self.db.cursor()
+            # Use a fresh connection to avoid closed database errors
+            import sqlite3
+            conn = sqlite3.connect(config.DB_PATH)
+            cursor = conn.cursor()
             cursor.execute('''
                 UPDATE trades
                 SET status = 'CANCELED'
                 WHERE order_id = ?
             ''', (order_id,))
-            self.db.commit()
+            conn.commit()
+            conn.close()
         except Exception as e:
             logger.error(f"Error updating canceled order in DB: {e}")

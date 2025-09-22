@@ -7,7 +7,7 @@ import json
 import math
 import time
 
-conn = get_db_conn()
+# Database connection no longer stored globally - use fresh connections instead
 
 # Cache for symbol specifications
 symbol_specs = {}
@@ -234,6 +234,7 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
 
     # Check volume window (use USDT volume if enabled)
     use_usdt_volume = config.GLOBAL_SETTINGS.get('use_usdt_volume', False)
+    conn = get_db_conn()  # Get fresh connection
     if use_usdt_volume:
         volume = get_usdt_volume_in_window(conn, symbol, config.VOLUME_WINDOW_SEC)
         volume_type = "USDT"
@@ -244,6 +245,7 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     threshold = config.SYMBOL_SETTINGS[symbol]['volume_threshold']
     if volume <= threshold:
         log.debug(f"Volume {volume:.2f} {volume_type} below threshold {threshold} for {symbol}")
+        conn.close()
         return
 
     log.info(f"Volume threshold met for {symbol}: {volume:.2f} {volume_type} > {threshold}")
@@ -284,6 +286,7 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         position_side = 'BOTH'
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
     await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
+    conn.close()  # Close the database connection
 
 def get_orderbook_price(symbol, side, fallback_price, offset_pct):
     """Get optimal price from orderbook or fallback to offset calculation."""
@@ -384,51 +387,54 @@ def calculate_sl_price(entry_price, side, sl_pct, position_side=None):
 
 async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1, symbol_config=None):
     """Place main order and schedule TP/SL for after fill."""
-    # For maker, use orderbook-based pricing
-    if order_type == 'LIMIT':
-        entry_price = get_orderbook_price(symbol, side, last_price, offset_pct)
-    else:
-        raise ValueError("Only LIMIT orders supported")
+    # Get fresh database connection for this operation
+    conn = get_db_conn()
 
-    # Prepare main order
-    main_order = {
-        'symbol': symbol,
-        'side': side,
-        'type': 'LIMIT',
-        'timeInForce': 'GTC',
-        'quantity': str(qty),
-        'price': format_price(symbol, entry_price),
-        'positionSide': position_side,
-        'newOrderRespType': 'RESULT'
-    }
+    try:
+        # For maker, use orderbook-based pricing
+        if order_type == 'LIMIT':
+            entry_price = get_orderbook_price(symbol, side, last_price, offset_pct)
+        else:
+            raise ValueError("Only LIMIT orders supported")
 
-    # Store TP/SL parameters for later placement after fill
-    tp_sl_params = None
-    if symbol_config:
-        tp_sl_params = {
+        # Prepare main order
+        main_order = {
             'symbol': symbol,
-            'qty': qty,
-            'position_side': position_side,
-            'entry_side': side,
-            'symbol_config': symbol_config,
-            'entry_price': entry_price  # Will be updated with actual fill price
+            'side': side,
+            'type': 'LIMIT',
+            'timeInForce': 'GTC',
+            'quantity': str(qty),
+            'price': format_price(symbol, entry_price),
+            'positionSide': position_side,
+            'newOrderRespType': 'RESULT'
         }
 
-    # Handle simulation mode
-    if config.SIMULATE_ONLY:
-        log.info(f"Simulating main order: {json.dumps(main_order, indent=2)}")
-        main_order_id = f'simulated_main_{int(time.time())}'
-        insert_trade(conn, symbol, main_order_id, side, qty, entry_price, 'SIMULATED',
-                    None, 'LIMIT', None)
+        # Store TP/SL parameters for later placement after fill
+        tp_sl_params = None
+        if symbol_config:
+            tp_sl_params = {
+                'symbol': symbol,
+                'qty': qty,
+                'position_side': position_side,
+                'entry_side': side,
+                'symbol_config': symbol_config,
+                'entry_price': entry_price  # Will be updated with actual fill price
+            }
 
-        # Simulate TP/SL placement
-        if tp_sl_params:
-            log.info("Would place TP/SL orders after main order fills")
-            await place_tp_sl_orders(main_order_id, entry_price, tp_sl_params)
-        return
+        # Handle simulation mode
+        if config.SIMULATE_ONLY:
+            log.info(f"Simulating main order: {json.dumps(main_order, indent=2)}")
+            main_order_id = f'simulated_main_{int(time.time())}'
+            insert_trade(conn, symbol, main_order_id, side, qty, entry_price, 'SIMULATED',
+                        None, 'LIMIT', None)
 
-    # Make actual request - place main order only
-    try:
+            # Simulate TP/SL placement
+            if tp_sl_params:
+                log.info("Would place TP/SL orders after main order fills")
+                await place_tp_sl_orders(main_order_id, entry_price, tp_sl_params)
+            return main_order_id
+
+        # Make actual request - place main order only
         # Debug: Log exactly what we're sending
         log.info(f"Sending main order: {json.dumps(main_order, indent=2)}")
         response = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=main_order)
@@ -464,6 +470,9 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
         insert_trade(conn, symbol, 'error', side, qty, entry_price, 'ERROR',
                    str(e), 'LIMIT', None)
         return None
+    finally:
+        # Always close the database connection
+        conn.close()
 
 async def monitor_and_place_tp_sl(order_id, tp_sl_params):
     """Monitor main order status and place TP/SL when filled."""
@@ -533,6 +542,9 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
 
     if not symbol_config:
         return
+
+    # Get fresh database connection for this operation
+    conn = get_db_conn()
 
     # Add a small delay to ensure position is established on exchange
     # This helps prevent race conditions where TP/SL are placed before position registers
@@ -700,3 +712,6 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                                     log.error(f"Failed to verify TP/SL orders after {verification_attempts} attempts")
                     except Exception as e:
                         log.error(f"Error verifying TP/SL orders: {e}")
+
+    # Close database connection
+    conn.close()
