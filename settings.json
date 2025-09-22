@@ -153,6 +153,21 @@
       "stop_loss_pct": 20,
       "working_type": "CONTRACT_PRICE",
       "price_protect": false
+    },
+    "HYPEUSDT": {
+      "volume_threshold": 5000,
+      "leverage": 10,
+      "margin_type": "CROSSED",
+      "trade_side": "OPPOSITE",
+      "trade_value_usdt": 1,
+      "price_offset_pct": 0.1,
+      "max_position_usdt": 50,
+      "take_profit_enabled": true,
+      "take_profit_pct": 1,
+      "stop_loss_enabled": true,
+      "stop_loss_pct": 20,
+      "working_type": "CONTRACT_PRICE",
+      "price_protect": false
     }
   }
 }

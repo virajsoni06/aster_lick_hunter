@@ -647,6 +647,9 @@ def get_default_config():
 def stream_events():
     """Server-sent events endpoint for real-time updates."""
     def generate():
+        # Send immediate connected event
+        yield f"data: {json.dumps({'type': 'connected', 'timestamp': int(time.time() * 1000)})}\n\n"
+
         last_check = time.time()
 
         while True:
@@ -867,5 +870,10 @@ monitor_thread = threading.Thread(target=monitor_database, daemon=True)
 monitor_thread.start()
 
 if __name__ == '__main__':
+    # Disable Flask/Werkzeug access logs
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)  # Only show errors, not access logs
+
     print("Starting API server on http://localhost:5000")
     app.run(debug=False, port=5000, threaded=True)
