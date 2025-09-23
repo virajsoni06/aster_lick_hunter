@@ -162,8 +162,9 @@ class Dashboard {
                 return;
             }
 
-            // Store wallet balance for PNL percentage calculation
+            // Store wallet and available balance for PNL percentage calculation
             this.walletBalance = parseFloat(data.totalWalletBalance) || 0;
+            this.availableBalance = parseFloat(data.availableBalance) || 0;
 
             // Update account display
             this.updateElement('wallet-balance', this.formatCurrency(data.totalWalletBalance));
@@ -724,22 +725,29 @@ class Dashboard {
                 this.updateElement('pnl-trades', data.summary.total_trades);
 
                 // Calculate and display percentage gains
-                if (this.walletBalance && this.walletBalance > 0) {
-                    const totalPnlPct = (totalPnl / this.walletBalance * 100).toFixed(2);
-                    const realizedPnlPct = (realizedPnl / this.walletBalance * 100).toFixed(2);
+                // Use total balance (wallet + available) as the base for percentage calculation
+                if (this.walletBalance !== undefined && this.availableBalance !== undefined) {
+                    // Total account balance is wallet balance + available balance
+                    const totalBalance = this.walletBalance + this.availableBalance;
 
-                    // Update percentage displays
-                    const totalPctElement = document.getElementById('total-pnl-pct');
-                    const realizedPctElement = document.getElementById('realized-pnl-pct');
+                    if (totalBalance > 0) {
+                        // Calculate percentage based on total balance
+                        const totalPnlPct = (totalPnl / totalBalance * 100).toFixed(2);
+                        const realizedPnlPct = (realizedPnl / totalBalance * 100).toFixed(2);
 
-                    if (totalPctElement) {
-                        totalPctElement.textContent = `(${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct}%)`;
-                        totalPctElement.className = `stat-percent ${totalPnl >= 0 ? 'positive' : 'negative'}`;
-                    }
+                        // Update percentage displays
+                        const totalPctElement = document.getElementById('total-pnl-pct');
+                        const realizedPctElement = document.getElementById('realized-pnl-pct');
 
-                    if (realizedPctElement) {
-                        realizedPctElement.textContent = `(${realizedPnlPct >= 0 ? '+' : ''}${realizedPnlPct}%)`;
-                        realizedPctElement.className = `stat-percent ${realizedPnl >= 0 ? 'positive' : 'negative'}`;
+                        if (totalPctElement) {
+                            totalPctElement.textContent = `(${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct}%)`;
+                            totalPctElement.className = `stat-percent ${totalPnl >= 0 ? 'positive' : 'negative'}`;
+                        }
+
+                        if (realizedPctElement) {
+                            realizedPctElement.textContent = `(${realizedPnlPct >= 0 ? '+' : ''}${realizedPnlPct}%)`;
+                            realizedPctElement.className = `stat-percent ${realizedPnl >= 0 ? 'positive' : 'negative'}`;
+                        }
                     }
                 }
             }
@@ -839,26 +847,18 @@ class Dashboard {
             return (date.getMonth() + 1) + '/' + date.getDate();
         });
 
-        const pnlData = dailyStats.map(d => d.total_pnl || 0);
         const realizedData = dailyStats.map(d => d.realized_pnl || 0);
 
         this.pnlChart.data.labels = labels;
         this.pnlChart.data.datasets = [
-            {
-                label: 'Total PNL',
-                data: pnlData,
-                borderColor: 'rgba(59, 130, 246, 1)',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                borderWidth: 2,
-                tension: 0.1
-            },
             {
                 label: 'Realized PNL',
                 data: realizedData,
                 borderColor: 'rgba(34, 197, 94, 1)',
                 backgroundColor: 'rgba(34, 197, 94, 0.1)',
                 borderWidth: 2,
-                tension: 0.1
+                tension: 0.1,
+                fill: true
             }
         ];
         this.pnlChart.update();
