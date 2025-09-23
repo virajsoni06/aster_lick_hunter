@@ -2,7 +2,7 @@ import asyncio
 import json
 import websockets
 from src.utils.config import config
-from src.database.db import insert_liquidation, get_db_conn
+from src.database.db import insert_liquidation, get_db_conn, get_usdt_volume_in_window, get_volume_in_window
 from src.utils.utils import log
 
 class LiquidationStreamer:
@@ -64,11 +64,45 @@ class LiquidationStreamer:
         conn = get_db_conn()
         insert_liquidation(conn, symbol, side, qty, price)
         conn.commit()
+
+        # Get volume tracking info if symbol is configured
+        volume_info = ""
+        if symbol in config.SYMBOLS:
+            # Get current tracked volume
+            use_usdt_volume = config.GLOBAL_SETTINGS.get('use_usdt_volume', False)
+            window_sec = config.GLOBAL_SETTINGS.get('volume_window_sec', 60)
+
+            if use_usdt_volume:
+                current_volume = get_usdt_volume_in_window(conn, symbol, window_sec)
+                volume_type = "USDT"
+            else:
+                current_volume = get_volume_in_window(conn, symbol, window_sec)
+                volume_type = "tokens"
+
+            # Get symbol settings
+            symbol_config = config.SYMBOL_SETTINGS.get(symbol, {})
+
+            # Determine which threshold applies (opposite to liquidation side)
+            if side == "SELL":  # Long liquidation -> would open LONG position
+                threshold = symbol_config.get('volume_threshold_long',
+                                             symbol_config.get('volume_threshold', 10000))
+                threshold_type = "LONG"
+            else:  # Short liquidation (BUY) -> would open SHORT position
+                threshold = symbol_config.get('volume_threshold_short',
+                                             symbol_config.get('volume_threshold', 10000))
+                threshold_type = "SHORT"
+
+            # Calculate percentage
+            percentage = (current_volume / threshold * 100) if threshold > 0 else 0
+
+            # Format volume info
+            volume_info = f" | Volume: {current_volume:,.0f}/{threshold:,.0f} {volume_type} ({percentage:.0f}% to {threshold_type} threshold)"
+
         conn.close()
 
         # Determine position type that was liquidated
         position_type = "Long" if side == "SELL" else "Short"
-        log.info(f"{position_type} Liquidation: {symbol} {side} {qty:.2f} @ {price} (${usdt_value:.2f} USDT)")
+        log.info(f"{position_type} Liquidation: {symbol} {side} {qty:.2f} @ {price} (${usdt_value:.2f} USDT){volume_info}")
 
         # Pass to message handler (e.g., for trading decisions)
         if self.message_handler:

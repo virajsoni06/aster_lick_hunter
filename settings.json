@@ -79,7 +79,7 @@
       "price_offset_pct": 0.01,
       "max_position_usdt": 100,
       "take_profit_enabled": true,
-      "take_profit_pct": 3,
+      "take_profit_pct": 2,
       "stop_loss_enabled": true,
       "stop_loss_pct": 20,
       "working_type": "CONTRACT_PRICE",
