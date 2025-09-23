@@ -47,9 +47,9 @@ class RateLimiter:
         # Thread safety
         self.lock = Lock()
 
-        # Track current usage from headers
-        self.current_request_weight = 0
-        self.current_order_count = 0
+        # Track current usage from headers (None initially, set after first parse)
+        self.current_request_weight = None
+        self.current_order_count = None
 
         # Rate limit violation tracking
         self.last_429_time = None
@@ -134,6 +134,18 @@ class RateLimiter:
                     self.is_banned = False
                     self.ban_until = None
 
+            # If we have header-based usage, use it first for more accuracy
+            if self.current_request_weight is not None:
+                effective_limit = self.request_limit if priority == 'critical' else self.normal_request_limit
+                if self.current_request_weight + weight > effective_limit:
+                    # Conservatively wait 1 second since we don't have exact time
+                    logger.debug(f"Header-based usage {self.current_request_weight} + {weight} would exceed {effective_limit}")
+                    return False, 1.0
+                else:
+                    logger.debug(f"Header shows {self.current_request_weight}, allowing request with weight {weight}")
+                    return True, None
+
+            # Fall back to local sliding window tracking
             # Clean old entries from sliding window
             current_time = time.time()
             minute_ago = current_time - 60
@@ -166,6 +178,27 @@ class RateLimiter:
             Tuple of (can_place_order, wait_time_seconds)
         """
         with self.lock:
+            # Check if banned
+            if self.is_banned:
+                if self.ban_until and time.time() < self.ban_until:
+                    wait_time = self.ban_until - time.time()
+                    return False, wait_time
+                else:
+                    # Ban expired
+                    self.is_banned = False
+                    self.ban_until = None
+
+            # If we have header-based usage, use it first for more accuracy
+            if self.current_order_count is not None:
+                effective_limit = self.order_limit if priority == 'critical' else self.normal_order_limit
+                if self.current_order_count >= effective_limit:
+                    logger.debug(f"Header-based order count {self.current_order_count} >= {effective_limit}")
+                    return False, 1.0
+                else:
+                    logger.debug(f"Header shows {self.current_order_count} orders, allowing")
+                    return True, None
+
+            # Fall back to local sliding window tracking
             # Clean old entries from sliding window
             current_time = time.time()
             minute_ago = current_time - 60

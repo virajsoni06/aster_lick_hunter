@@ -10,7 +10,13 @@ from datetime import datetime
 
 try:
     from colorama import init, Fore, Back, Style
-    init(autoreset=True)
+
+    # Force color support on Windows
+    if sys.platform == "win32":
+        os.system("")  # Enables ANSI escape sequences on Windows
+
+    # Initialize colorama - always convert on Windows for compatibility
+    init(autoreset=True, convert=(sys.platform == "win32"))
     COLORS_AVAILABLE = True
 except ImportError:
     COLORS_AVAILABLE = False

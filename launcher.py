@@ -1,5 +1,5 @@
 """
-Launcher script for running both the bot and the dashboard.
+Launcher script for running both the bot and the dashboard with colored output.
 """
 
 import subprocess
@@ -9,11 +9,29 @@ import signal
 import os
 from threading import Thread
 
+# Enable ANSI colors on Windows
+if sys.platform == "win32":
+    os.system("color")
+
+try:
+    from colorama import init, Fore, Style, Back
+    init(autoreset=True)
+    COLORS_AVAILABLE = True
+except ImportError:
+    COLORS_AVAILABLE = False
+    # Define dummy classes for fallback
+    class Fore:
+        BLACK = RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = RESET = ''
+    class Back:
+        BLACK = RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = RESET = ''
+    class Style:
+        DIM = NORMAL = BRIGHT = RESET_ALL = ''
+
 processes = []
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
-    print("\n[Launcher] Shutting down all processes...")
+    print(f"\n{colorize_prefix('Launcher', Fore.RED)} Shutting down all processes...")
     for process in processes:
         try:
             process.terminate()
@@ -22,51 +40,121 @@ def signal_handler(signum, frame):
             process.kill()
     sys.exit(0)
 
+def colorize_prefix(prefix, color=Fore.CYAN):
+    """Add color to prefix labels."""
+    if COLORS_AVAILABLE:
+        return f"{color}{Style.BRIGHT}[{prefix}]{Style.RESET_ALL}"
+    return f"[{prefix}]"
+
 def run_bot():
     """Run the main bot."""
-    print("[Launcher] Starting Aster Liquidation Hunter Bot...")
-    process = subprocess.Popen(
-        [sys.executable, "main.py"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        bufsize=1
-    )
-    processes.append(process)
+    print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Starting Aster Liquidation Hunter Bot...")
 
-    # Stream bot output
-    for line in iter(process.stdout.readline, ''):
-        if line:
-            print(f"[Bot] {line.rstrip()}")
+    # On Windows, don't capture output to preserve colors from the subprocess
+    if sys.platform == "win32":
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
+
+        # Print a colored header for the bot output
+        if COLORS_AVAILABLE:
+            print(f"\n{Fore.GREEN}{Style.BRIGHT}{'─' * 60}{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}{Style.BRIGHT}  BOT OUTPUT:{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}{Style.BRIGHT}{'─' * 60}{Style.RESET_ALL}\n")
+
+        process = subprocess.Popen(
+            [sys.executable, "-u", "main.py"],
+            env=env
+            # Don't capture stdout/stderr - let it print directly with colors
+        )
+    else:
+        # On Unix-like systems, we can capture and add prefix
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
+
+        process = subprocess.Popen(
+            [sys.executable, "-u", "main.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+            encoding='utf-8',
+            errors='replace'
+        )
+
+        prefix = colorize_prefix("Bot", Fore.GREEN)
+        # Stream output with colored prefix
+        for line in iter(process.stdout.readline, ''):
+            if line:
+                print(f"{prefix} {line.rstrip()}")
+
+    processes.append(process)
 
 def run_dashboard():
     """Run the Flask dashboard."""
-    print("[Launcher] Starting Dashboard API Server...")
+    print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Starting Dashboard API Server...")
 
     # Get the current directory to ensure proper module path
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    process = subprocess.Popen(
-        [sys.executable, "src/api/api_server.py"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        bufsize=1,
-        cwd=current_dir,  # Set working directory
-        env={**os.environ, 'PYTHONPATH': current_dir}  # Add to Python path
-    )
-    processes.append(process)
+    # On Windows, don't capture output to preserve colors
+    if sys.platform == "win32":
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
+        env['PYTHONPATH'] = current_dir
 
-    # Stream dashboard output
-    for line in iter(process.stdout.readline, ''):
-        if line:
-            print(f"[Dashboard] {line.rstrip()}")
+        # Print a colored header for the dashboard output
+        if COLORS_AVAILABLE:
+            print(f"\n{Fore.BLUE}{Style.BRIGHT}{'─' * 60}{Style.RESET_ALL}")
+            print(f"{Fore.BLUE}{Style.BRIGHT}  DASHBOARD OUTPUT:{Style.RESET_ALL}")
+            print(f"{Fore.BLUE}{Style.BRIGHT}{'─' * 60}{Style.RESET_ALL}\n")
+
+        process = subprocess.Popen(
+            [sys.executable, "-u", "src/api/api_server.py"],
+            cwd=current_dir,
+            env=env
+            # Don't capture stdout/stderr - let it print directly with colors
+        )
+    else:
+        # On Unix-like systems, we can capture and add prefix
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
+        env['PYTHONPATH'] = current_dir
+
+        process = subprocess.Popen(
+            [sys.executable, "-u", "src/api/api_server.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=current_dir,
+            env=env,
+            encoding='utf-8',
+            errors='replace'
+        )
+
+        prefix = colorize_prefix("Dashboard", Fore.BLUE)
+        # Stream output with colored prefix
+        for line in iter(process.stdout.readline, ''):
+            if line:
+                print(f"{prefix} {line.rstrip()}")
+
+    processes.append(process)
 
 def main():
     """Main launcher function."""
-    print("=" * 60)
-    print("Aster Liquidation Hunter - Launcher")
-    print("=" * 60)
+    if COLORS_AVAILABLE:
+        print(f"{Fore.CYAN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{Style.BRIGHT}  Aster Liquidation Hunter - Launcher{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}")
+    else:
+        print("=" * 60)
+        print("  Aster Liquidation Hunter - Launcher")
+        print("=" * 60)
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
@@ -74,37 +162,44 @@ def main():
 
     # Check for .env file first
     if not os.path.exists('.env'):
-        print("\n[Launcher] ⚠️  No .env file found!")
-        print("[Launcher] Starting setup wizard to configure API credentials...")
+        print(f"\n{colorize_prefix('Launcher', Fore.RED)} No .env file found!")
+        print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Starting setup wizard to configure API credentials...")
         print("")
 
         # Run the setup utility
         try:
             result = subprocess.run([sys.executable, "setup_env.py"], check=False)
             if result.returncode != 0:
-                print("\n[Launcher] Setup cancelled or failed. Exiting...")
+                print(f"\n{colorize_prefix('Launcher', Fore.RED)} Setup cancelled or failed. Exiting...")
                 sys.exit(1)
         except FileNotFoundError:
-            print("[Launcher] Error: setup_env.py not found!")
-            print("[Launcher] Please create .env file manually with API_KEY and API_SECRET")
+            print(f"{colorize_prefix('Launcher', Fore.RED)} Error: setup_env.py not found!")
+            print(f"{colorize_prefix('Launcher', Fore.RED)} Please create .env file manually with API_KEY and API_SECRET")
+            print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Get your API key at: https://www.asterdex.com/en/referral/3TixB2")
             sys.exit(1)
 
         # Verify .env was created
         if not os.path.exists('.env'):
-            print("[Launcher] .env file was not created. Exiting...")
+            print(f"{colorize_prefix('Launcher', Fore.RED)} .env file was not created. Exiting...")
             sys.exit(1)
 
         print("")
 
     # Check for required files
     required_files = ['main.py', 'src/api/api_server.py', 'settings.json', '.env']
+    missing_files = []
     for file in required_files:
         if not os.path.exists(file):
-            print(f"[Launcher] Error: Required file '{file}' not found!")
-            sys.exit(1)
+            missing_files.append(file)
 
-    print("[Launcher] All required files found.")
-    print("[Launcher] Starting services...")
+    if missing_files:
+        print(f"{colorize_prefix('Launcher', Fore.RED)} Error: Required files not found:")
+        for file in missing_files:
+            print(f"  {Fore.RED}• {file}{Style.RESET_ALL}")
+        sys.exit(1)
+
+    print(f"{colorize_prefix('Launcher', Fore.GREEN)} All required files found.")
+    print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Starting services...")
 
     # Start bot in a thread
     bot_thread = Thread(target=run_bot, daemon=True)
@@ -120,11 +215,18 @@ def main():
     # Wait a moment for services to start
     time.sleep(3)
 
-    print("\n" + "=" * 60)
-    print("Services are running!")
-    print("Dashboard: http://localhost:5000")
-    print("Press Ctrl+C to stop all services")
-    print("=" * 60 + "\n")
+    if COLORS_AVAILABLE:
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}{Style.BRIGHT}  Services are running!{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}  Dashboard: {Fore.CYAN}{Style.BRIGHT}http://localhost:5000{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}  Press {Fore.RED}{Style.BRIGHT}Ctrl+C{Style.RESET_ALL}{Fore.YELLOW} to stop all services{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}\n")
+    else:
+        print("\n" + "=" * 60)
+        print("  Services are running!")
+        print("  Dashboard: http://localhost:5000")
+        print("  Press Ctrl+C to stop all services")
+        print("=" * 60 + "\n")
 
     try:
         # Keep main thread alive

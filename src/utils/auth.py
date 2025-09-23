@@ -7,6 +7,7 @@ import random
 from src.utils.config import config
 from src.utils.rate_limiter import RateLimiter
 from src.utils.utils import log
+import endpoint_weights
 
 # Global rate limiter instance
 rate_limiter = RateLimiter(reserve_pct=0.2)
@@ -19,15 +20,36 @@ def make_authenticated_request(method, url, data=None, params=None):
     """Make an authenticated request using HMAC signature."""
     timestamp = int(time.time() * 1000)
 
+    # Get the endpoint weight
+    parsed_url = urllib.parse.urlparse(url)
+    endpoint_path = parsed_url.path
+    weight = endpoint_weights.get_endpoint_weight(endpoint_path)
+
     # Determine priority for rate limiting
     is_order = False
     priority = 'normal'
-    if url.endswith('/fapi/v1/order') and method.upper() == 'POST':
+    # Consider POST order or batchOrders as order requests
+    if (endpoint_path == '/fapi/v1/order' or endpoint_path == '/fapi/v1/batchOrders') and method.upper() == 'POST':
         priority = 'critical'
         is_order = True
 
-    # Wait if needed before making request
-    rate_limiter.wait_if_needed(is_order=is_order, priority=priority)
+    # Wait if needed before making request (check limits considering this request's weight)
+    can_proceed, wait_time = rate_limiter.can_make_request(weight=weight, priority=priority)
+    if not can_proceed and wait_time:
+        log.info(f"Rate limit reached for {endpoint_path} (weight {weight}). Waiting {wait_time:.1f}s...")
+        time.sleep(wait_time)
+
+    if is_order:
+        can_proceed_order, wait_time_order = rate_limiter.can_place_order(priority=priority)
+        if not can_proceed_order and wait_time_order:
+            log.info(f"Order rate limit reached. Waiting {wait_time_order:.1f}s...")
+            time.sleep(wait_time_order)
+    elif url.endswith('/fapi/v1/order'):
+        # For non-POST order requests (like GET order), no priority but still order limit
+        can_proceed_order, wait_time_order = rate_limiter.can_place_order()
+        if not can_proceed_order and wait_time_order:
+            log.info(f"Order rate limit reached (non-post). Waiting {wait_time_order:.1f}s...")
+            time.sleep(wait_time_order)
 
     # Add timestamp to the parameters
     if method.upper() == 'GET':
@@ -108,7 +130,10 @@ def make_authenticated_request(method, url, data=None, params=None):
 
     # Record successful requests
     if response.status_code < 400:
-        rate_limiter.record_request(1)
+        # Parse headers to sync current usage
+        rate_limiter.parse_headers(response.headers)
+        # Record with actual weight
+        rate_limiter.record_request(weight)
         if is_order:
             rate_limiter.record_order()
 
