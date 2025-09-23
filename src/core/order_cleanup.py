@@ -913,8 +913,14 @@ class OrderCleanup:
         """Start the cleanup task."""
         if not self.cleanup_task:
             self.running = True
-            self.cleanup_task = asyncio.create_task(self.cleanup_loop())
-            logger.info("Order cleanup started")
+            try:
+                # Get the running event loop
+                loop = asyncio.get_running_loop()
+                self.cleanup_task = loop.create_task(self.cleanup_loop())
+                logger.info("Order cleanup started")
+            except RuntimeError as e:
+                logger.error(f"Failed to start order cleanup: {e}")
+                logger.error("Make sure start() is called from within an async context")
 
     def stop(self) -> None:
         """Stop the cleanup task."""
