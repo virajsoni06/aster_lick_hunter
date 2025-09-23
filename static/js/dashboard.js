@@ -118,13 +118,17 @@ class Dashboard {
 
     async loadAllData() {
         try {
+            // Load account first to get wallet balance
+            await this.loadAccount();
+
+            // Then load other data in parallel
             await Promise.all([
-                this.loadAccount(),
                 this.loadPositions(),
                 this.loadStats(),
                 this.loadLiquidations(),
                 this.loadTrades(),
-                this.loadConfig()
+                this.loadConfig(),
+                this.loadPNLData()  // Now this can use wallet balance
             ]);
         } catch (error) {
             console.error('Error loading data:', error);
@@ -134,10 +138,14 @@ class Dashboard {
 
     async refreshData() {
         try {
+            // Load account first to get wallet balance
+            await this.loadAccount();
+
+            // Then load other data in parallel
             await Promise.all([
-                this.loadAccount(),
                 this.loadPositions(),
-                this.loadStats()
+                this.loadStats(),
+                this.loadPNLData()  // Refresh PNL data too
             ]);
         } catch (error) {
             console.error('Error refreshing data:', error);
@@ -153,6 +161,9 @@ class Dashboard {
                 console.error('Account error:', data.error);
                 return;
             }
+
+            // Store wallet balance for PNL percentage calculation
+            this.walletBalance = parseFloat(data.totalWalletBalance) || 0;
 
             // Update account display
             this.updateElement('wallet-balance', this.formatCurrency(data.totalWalletBalance));
@@ -704,10 +715,33 @@ class Dashboard {
 
             if (data.summary) {
                 // Update PNL summary
-                this.updateElement('total-pnl', this.formatCurrency(data.summary.total_pnl), data.summary.total_pnl);
-                this.updateElement('realized-pnl', this.formatCurrency(data.summary.total_realized_pnl), data.summary.total_realized_pnl);
+                const totalPnl = data.summary.total_pnl;
+                const realizedPnl = data.summary.total_realized_pnl;
+
+                this.updateElement('total-pnl', this.formatCurrency(totalPnl), totalPnl);
+                this.updateElement('realized-pnl', this.formatCurrency(realizedPnl), realizedPnl);
                 this.updateElement('win-rate', data.summary.win_rate.toFixed(1) + '%');
                 this.updateElement('pnl-trades', data.summary.total_trades);
+
+                // Calculate and display percentage gains
+                if (this.walletBalance && this.walletBalance > 0) {
+                    const totalPnlPct = (totalPnl / this.walletBalance * 100).toFixed(2);
+                    const realizedPnlPct = (realizedPnl / this.walletBalance * 100).toFixed(2);
+
+                    // Update percentage displays
+                    const totalPctElement = document.getElementById('total-pnl-pct');
+                    const realizedPctElement = document.getElementById('realized-pnl-pct');
+
+                    if (totalPctElement) {
+                        totalPctElement.textContent = `(${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct}%)`;
+                        totalPctElement.className = `stat-percent ${totalPnl >= 0 ? 'positive' : 'negative'}`;
+                    }
+
+                    if (realizedPctElement) {
+                        realizedPctElement.textContent = `(${realizedPnlPct >= 0 ? '+' : ''}${realizedPnlPct}%)`;
+                        realizedPctElement.className = `stat-percent ${realizedPnl >= 0 ? 'positive' : 'negative'}`;
+                    }
+                }
             }
 
             // Update PNL chart

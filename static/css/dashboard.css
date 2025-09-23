@@ -153,6 +153,25 @@ body {
     color: var(--danger);
 }
 
+.stat-percent {
+    font-size: 14px;
+    font-weight: 500;
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.stat-percent.positive {
+    color: var(--success);
+    background-color: rgba(39, 174, 96, 0.1);
+}
+
+.stat-percent.negative {
+    color: var(--danger);
+    background-color: rgba(235, 87, 87, 0.1);
+}
+
 /* General Positive/Negative Values */
 .positive {
     color: var(--accent-success);
