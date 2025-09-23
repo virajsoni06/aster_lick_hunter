@@ -43,6 +43,7 @@ bot.log
 htmlcov/
 .tox/
 .hypothesis/
+backups/
 
 # Distribution / packaging
 dist/

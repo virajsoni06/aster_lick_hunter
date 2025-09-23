@@ -20,9 +20,29 @@ python launcher.py
 
 # Run dashboard only
 python src/api/api_server.py
+
+# Initialize or migrate database schema
+python init_database.py
+python migrate_db.py
 ```
 
 Dashboard available at: http://localhost:5000
+
+## Development Commands
+
+```bash
+# Check Python syntax errors
+python -m py_compile main.py src/**/*.py
+
+# Format Python code (if black installed)
+python -m black src/ main.py launcher.py
+
+# Type checking (if mypy installed)
+python -m mypy src/
+
+# Running with debug output
+python main.py 2>&1 | tee debug.log
+```
 
 ## Configuration
 
@@ -166,3 +186,35 @@ When `simulate_only: true` in settings.json:
 - `POST /api/config/symbol/remove`: Remove symbol configuration
 - `GET /api/stream`: SSE endpoint for real-time updates
 - `GET /api/health`: Health check endpoint
+
+## Important Implementation Details
+
+### Tranche System
+The bot implements an intelligent position management system through "tranches":
+- Each new position starts as tranche 0
+- When a position's unrealized PNL drops below -tranche_pnl_increment_pct (default -5%), new liquidations trigger creation of a new tranche
+- Profitable tranches are automatically merged to optimize capital efficiency
+- Maximum tranches per symbol/side is configurable (max_tranches_per_symbol_side)
+- Tranche tracking is handled via the tranche_id field in trades table
+
+### Database Connections
+- Uses SQLite with thread-safe connection handling
+- Fresh database connections are obtained for each operation via `get_db_conn()`
+- All connections are properly closed after use to prevent locking issues
+- Database files: `bot.db` (main), backup copies created with data prefix
+
+### Order Precision Handling
+- Symbol specifications (minQty, stepSize, pricePrecision) are cached from exchangeInfo endpoint
+- Price and quantity calculations use proper rounding based on exchange requirements
+- The `round_to_precision()` function in trader.py ensures all values meet exchange specifications
+
+### Rate Limiting
+- Built-in rate limit protection with configurable buffer percentage
+- Implements exponential backoff on rate limit errors
+- Request tracking to avoid exceeding exchange limits
+
+### Background Services
+- Order cleanup service runs in separate thread (order_cleanup.py)
+- User data stream maintains WebSocket connection for real-time updates
+- Database monitoring thread in API server for live dashboard updates
+- All background services handle graceful shutdown via threading events
