@@ -56,6 +56,31 @@
                 </div>
             </div>
 
+            <!-- PNL Summary -->
+            <div class="card pnl-summary">
+                <h2>PNL Summary (7 Days)</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <label>Total PNL</label>
+                        <span id="total-pnl" class="stat-value">$0.00</span>
+                        <span id="total-pnl-pct" class="stat-percent"></span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Realized PNL</label>
+                        <span id="realized-pnl" class="stat-value">$0.00</span>
+                        <span id="realized-pnl-pct" class="stat-percent"></span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Win Rate</label>
+                        <span id="win-rate" class="stat-value">0%</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>Total Trades</label>
+                        <span id="pnl-trades" class="stat-value">0</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Open Positions -->
             <div class="card open-positions">
                 <h2>Open Positions</h2>
@@ -83,30 +108,6 @@
 
             <!-- PNL Analytics -->
             <div class="pnl-section">
-                <div class="card pnl-summary">
-                    <h2>PNL Summary (7 Days)</h2>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <label>Total PNL</label>
-                            <span id="total-pnl" class="stat-value">$0.00</span>
-                            <span id="total-pnl-pct" class="stat-percent"></span>
-                        </div>
-                        <div class="stat-item">
-                            <label>Realized PNL</label>
-                            <span id="realized-pnl" class="stat-value">$0.00</span>
-                            <span id="realized-pnl-pct" class="stat-percent"></span>
-                        </div>
-                        <div class="stat-item">
-                            <label>Win Rate</label>
-                            <span id="win-rate" class="stat-value">0%</span>
-                        </div>
-                        <div class="stat-item">
-                            <label>Total Trades</label>
-                            <span id="pnl-trades" class="stat-value">0</span>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="card pnl-chart">
                     <h2>Daily PNL (7 Days)</h2>
                     <canvas id="pnl-chart"></canvas>
