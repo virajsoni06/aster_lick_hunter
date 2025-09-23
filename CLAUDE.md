@@ -28,6 +28,172 @@ python migrate_db.py
 
 Dashboard available at: http://localhost:5000
 
+## Project Structure
+
+```
+aster_lick_hunter/
+├── main.py                 # Main bot entry point
+├── launcher.py             # Orchestrates bot and dashboard processes
+├── settings.json           # Trading configuration
+├── .env                    # API credentials (not in repo)
+├── requirements.txt        # Python dependencies
+├── CLAUDE.md              # Project documentation for Claude Code
+├── README.md              # User documentation
+│
+├── src/                   # Source code directory
+│   ├── api/               # Dashboard API and services
+│   │   ├── api_server.py  # Flask REST API server
+│   │   └── pnl_tracker.py # P&L calculation service
+│   │
+│   ├── core/              # Core trading bot logic
+│   │   ├── streamer.py    # WebSocket liquidation stream
+│   │   ├── trader.py      # Trading logic and order management
+│   │   ├── order_cleanup.py # Stale order cleanup service
+│   │   └── user_stream.py # User data WebSocket stream
+│   │
+│   ├── database/          # Database layer
+│   │   └── db.py          # SQLite database operations
+│   │
+│   └── utils/             # Utility modules
+│       ├── auth.py        # API authentication
+│       ├── config.py      # Configuration management
+│       ├── colored_logger.py # Colored console logging
+│       ├── endpoint_weights.py # API rate limit weights
+│       ├── rate_limiter.py # Rate limiting implementation
+│       ├── order_manager.py # Order management utilities
+│       ├── position_manager.py # Position tracking
+│       └── utils.py       # General utilities
+│
+├── scripts/               # Setup and maintenance scripts
+│   ├── init_database.py  # Initialize database schema
+│   ├── migrate_db.py     # Database migrations
+│   ├── setup_env.py      # Environment setup
+│   └── analyze_tranches.py # Tranche analysis tool
+│
+├── static/                # Frontend assets
+│   ├── css/
+│   │   └── dashboard.css # Dashboard styles
+│   └── js/
+│       └── dashboard.js  # Dashboard JavaScript
+│
+├── templates/             # HTML templates
+│   ├── index.html        # Dashboard main page
+│   └── setup.html        # Initial setup page
+│
+├── tests/                 # Test files
+│   ├── test_colors.py    # Logger color tests
+│   └── test_rate_limiter.py # Rate limiter tests
+│
+├── backups/              # Backup directory for code versions
+├── data/                 # Data storage (if needed)
+└── docs/                 # Additional documentation (if needed)
+```
+
+## File Placement Guidelines
+
+When creating new files for the project, follow these conventions:
+
+### Source Code (`src/`)
+- **API Endpoints & Services** → `src/api/`
+  - New REST endpoints, dashboard features
+  - Services that support the web interface
+  - Example: `src/api/websocket_handler.py`
+
+- **Core Trading Logic** → `src/core/`
+  - Trading strategies, order execution
+  - Market data processing, signal generation
+  - WebSocket stream handlers
+  - Example: `src/core/strategy_macd.py`
+
+- **Database Operations** → `src/database/`
+  - New database models or schemas
+  - Migration scripts for schema changes
+  - Database utilities and helpers
+  - Example: `src/database/models.py`
+
+- **Utility Functions** → `src/utils/`
+  - Shared utilities used across modules
+  - Helper functions, formatters, validators
+  - External service integrations
+  - Example: `src/utils/notifications.py`
+
+### Scripts (`scripts/`)
+- One-time setup or migration scripts
+- Data analysis or reporting tools
+- Maintenance and cleanup utilities
+- Example: `scripts/export_trades.py`
+
+### Frontend (`static/` and `templates/`)
+- **CSS Files** → `static/css/`
+  - Component-specific styles
+  - Theme files
+
+- **JavaScript** → `static/js/`
+  - Frontend logic and interactions
+  - Chart implementations
+  - API client code
+
+- **HTML Templates** → `templates/`
+  - New dashboard pages
+  - Email templates (if needed)
+
+### Configuration Files
+- Root directory for `.env`, `settings.json`
+- Config templates in `docs/` if providing examples
+
+## Test Organization
+
+### Test Structure
+```
+tests/
+├── unit/                  # Unit tests for individual functions
+│   ├── test_trader.py
+│   ├── test_auth.py
+│   └── test_database.py
+│
+├── integration/           # Integration tests
+│   ├── test_api.py
+│   └── test_websocket.py
+│
+├── fixtures/              # Test data and fixtures
+│   ├── sample_liquidations.json
+│   └── mock_orderbook.json
+│
+└── conftest.py           # Pytest configuration and shared fixtures
+```
+
+### Test Naming Conventions
+- Test files: `test_<module_name>.py`
+- Test classes: `Test<ClassName>`
+- Test methods: `test_<method_name>_<scenario>`
+- Example: `test_place_order_insufficient_balance()`
+
+### Running Tests
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run specific test file
+python -m pytest tests/unit/test_trader.py
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=html
+
+# Run only unit tests
+python -m pytest tests/unit/
+
+# Run only integration tests
+python -m pytest tests/integration/
+```
+
+### Test Guidelines
+- Each source module should have corresponding tests
+- Mock external API calls and database operations in unit tests
+- Use fixtures for common test data
+- Integration tests can use a test database
+- Keep tests independent and idempotent
+- Use descriptive test names that explain the scenario
+
 ## Development Commands
 
 ```bash
