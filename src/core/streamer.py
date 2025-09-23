@@ -100,9 +100,8 @@ class LiquidationStreamer:
 
         conn.close()
 
-        # Determine position type that was liquidated
-        position_type = "Long" if side == "SELL" else "Short"
-        log.info(f"{position_type} Liquidation: {symbol} {side} {qty:.2f} @ {price} (${usdt_value:.2f} USDT){volume_info}")
+        # Log liquidation with color coding and volume info
+        log.liquidation(symbol, side, qty, price, usdt_value, volume_info)
 
         # Pass to message handler (e.g., for trading decisions)
         if self.message_handler:

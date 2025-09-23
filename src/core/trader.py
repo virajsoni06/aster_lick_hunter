@@ -68,8 +68,9 @@ async def fetch_exchange_info():
 def format_price(symbol, price):
     """Format price with correct precision and tick size for the symbol."""
     if symbol not in symbol_specs:
-        # Fallback to 6 decimals if specs not found
-        return f"{price:.6f}"
+        # Fallback to 6 decimals, strip trailing zeros
+        formatted = f"{price:.6f}"
+        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
 
     specs = symbol_specs[symbol]
     tick_size = specs.get('tickSize')
@@ -79,9 +80,32 @@ def format_price(symbol, price):
         # Round to nearest tick
         price = round(price / tick_size) * tick_size
 
-    # Format with correct precision
+    # Format with correct precision and strip trailing zeros
     precision = specs.get('pricePrecision', 2)
-    return f"{price:.{precision}f}"
+    formatted = f"{price:.{precision}f}"
+    return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+
+def format_quantity(symbol, qty):
+    """Format quantity with correct precision and step size for the symbol."""
+    if symbol not in symbol_specs:
+        # Fallback to 6 decimals, strip trailing zeros
+        formatted = f"{qty:.6f}"
+        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+
+    specs = symbol_specs[symbol]
+    step_size = specs.get('stepSize', 0.001)  # Default step size if not available
+
+    # Round down to nearest step size
+    if step_size > 0:
+        qty = math.floor(qty / step_size) * step_size
+
+    # Round to correct precision
+    precision = specs.get('quantityPrecision', 2)
+    qty_rounded = round(qty, precision)
+
+    # Format with correct precision and strip trailing zeros
+    formatted = f"{qty_rounded:.{precision}f}"
+    return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
 
 def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
     """Calculate the quantity to trade based on USDT value (position size) and current price."""
@@ -316,7 +340,7 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         return
 
     position_type = "LONG" if trade_side == "BUY" else "SHORT"
-    log.info(f"Volume threshold met for {symbol} {position_type}: {volume:.2f} {volume_type} > {threshold}")
+    log.threshold_met(symbol, volume, threshold)
 
     # Calculate position size from collateral and leverage
     trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
@@ -523,7 +547,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
             status = resp_data.get('status', 'NEW')
             fill_price = float(resp_data.get('avgPrice', entry_price)) if resp_data.get('avgPrice') else entry_price
 
-            log.info(f"Placed main order {order_id}: {symbol} {side} {qty} @ {entry_price}, status: {status}")
+            log.trade_placed(symbol, side, qty, entry_price)
             # Extract filled quantity and average price from response
             executed_qty = float(resp_data.get('executedQty', 0))
             avg_price_str = resp_data.get('avgPrice', '0')
@@ -544,13 +568,13 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
 
             return order_id
         else:
-            log.error(f"Order failed: {response.status_code} {response.text}")
+            log.trade_failed(symbol, f"HTTP {response.status_code}: {response.text}")
             insert_trade(conn, symbol, 'failed', side, qty, entry_price, 'FAILED',
                        response.text, 'LIMIT', None, filled_qty=0, avg_price=entry_price)
             return None
 
     except Exception as e:
-        log.error(f"Error placing order: {e}")
+        log.trade_failed(symbol, str(e))
         insert_trade(conn, symbol, 'error', side, qty, entry_price, 'ERROR',
                    str(e), 'LIMIT', None, filled_qty=0, avg_price=entry_price)
         return None
@@ -831,7 +855,7 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
             'side': tp_side,
             'type': 'TAKE_PROFIT_MARKET',
             'stopPrice': format_price(symbol, tp_price),
-            'quantity': str(qty),
+            'quantity': format_quantity(symbol, qty),
             'positionSide': position_side,
             'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
             'priceProtect': str(symbol_config.get('price_protect', False)).lower()
@@ -860,7 +884,7 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
             'side': sl_side,
             'type': 'STOP_MARKET',
             'stopPrice': format_price(symbol, sl_price),
-            'quantity': str(qty),
+            'quantity': format_quantity(symbol, qty),
             'positionSide': position_side,
             'workingType': symbol_config.get('working_type', 'CONTRACT_PRICE'),
             'priceProtect': str(symbol_config.get('price_protect', False)).lower()

@@ -37,7 +37,7 @@ def main():
 
         print("")
 
-    log.info("Starting Aster Liquidation Hunter Bot")
+    log.startup("Starting Aster Liquidation Hunter Bot")
 
     # Initialize DB
     conn = init_db(config.DB_PATH)
@@ -68,7 +68,7 @@ def main():
 
     # Set up signal handlers for graceful shutdown
     def signal_handler(signum, frame):
-        log.info("Received shutdown signal, stopping...")
+        log.shutdown("Received shutdown signal, stopping...")
         asyncio.get_event_loop().stop()
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -129,7 +129,7 @@ def main():
     finally:
         if conn:
             conn.close()
-        log.info("Bot shutdown complete")
+        log.shutdown("Bot shutdown complete")
 
 if __name__ == "__main__":
     main()

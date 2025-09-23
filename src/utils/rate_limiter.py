@@ -21,16 +21,24 @@ class RateLimiter:
     - ORDERS: 1200 per minute
     """
 
-    def __init__(self, buffer_pct: float = 0.1):
+    def __init__(self, buffer_pct: float = 0.1, reserve_pct: float = 0.2):
         """
         Initialize rate limiter.
 
         Args:
             buffer_pct: Safety buffer percentage (0.1 = 10% buffer)
+            reserve_pct: Reserved capacity for critical requests (0.2 = 20% reserved)
         """
         # Apply safety buffer to limits
         self.request_limit = int(2400 * (1 - buffer_pct))
         self.order_limit = int(1200 * (1 - buffer_pct))
+
+        # Reserve capacity for critical requests
+        self.reserve_pct = reserve_pct
+        self.reserved_request_capacity = int(self.request_limit * reserve_pct)
+        self.reserved_order_capacity = int(self.order_limit * reserve_pct)
+        self.normal_request_limit = self.request_limit - self.reserved_request_capacity
+        self.normal_order_limit = self.order_limit - self.reserved_order_capacity
 
         # Sliding window tracking
         self.request_times = deque()
@@ -49,7 +57,7 @@ class RateLimiter:
         self.is_banned = False
         self.ban_until = None
 
-        logger.info(f"Rate limiter initialized with limits: requests={self.request_limit}/min, orders={self.order_limit}/min")
+        logger.info(f"Rate limiter initialized with limits: requests={self.request_limit}/min (normal={self.normal_request_limit}, reserved={self.reserved_request_capacity}), orders={self.order_limit}/min")
 
     def parse_headers(self, headers: Dict[str, str]) -> None:
         """
@@ -104,12 +112,13 @@ class RateLimiter:
             # Successful request, reset consecutive 429 counter
             self.consecutive_429s = 0
 
-    def can_make_request(self, weight: int = 1) -> Tuple[bool, Optional[float]]:
+    def can_make_request(self, weight: int = 1, priority: str = 'normal') -> Tuple[bool, Optional[float]]:
         """
         Check if a request can be made based on current limits.
 
         Args:
             weight: Weight of the request (default 1)
+            priority: 'critical' or 'normal' - critical bypasses reserved limits
 
         Returns:
             Tuple of (can_make_request, wait_time_seconds)
@@ -133,8 +142,11 @@ class RateLimiter:
             while self.request_times and self.request_times[0] < minute_ago:
                 self.request_times.popleft()
 
+            # Effective limit based on priority
+            effective_limit = self.request_limit if priority == 'critical' else self.normal_request_limit
+
             # Check if we can make the request
-            if len(self.request_times) + weight > self.request_limit:
+            if len(self.request_times) + weight > effective_limit:
                 # Calculate wait time
                 if self.request_times:
                     wait_time = 60 - (current_time - self.request_times[0])
@@ -143,9 +155,12 @@ class RateLimiter:
 
             return True, None
 
-    def can_place_order(self) -> Tuple[bool, Optional[float]]:
+    def can_place_order(self, priority: str = 'normal') -> Tuple[bool, Optional[float]]:
         """
         Check if an order can be placed based on order rate limits.
+
+        Args:
+            priority: 'critical' or 'normal' - critical bypasses reserved limits
 
         Returns:
             Tuple of (can_place_order, wait_time_seconds)
@@ -159,8 +174,11 @@ class RateLimiter:
             while self.order_times and self.order_times[0] < minute_ago:
                 self.order_times.popleft()
 
+            # Effective limit based on priority
+            effective_limit = self.order_limit if priority == 'critical' else self.normal_order_limit
+
             # Check if we can place the order
-            if len(self.order_times) >= self.order_limit:
+            if len(self.order_times) >= effective_limit:
                 # Calculate wait time
                 if self.order_times:
                     wait_time = 60 - (current_time - self.order_times[0])
@@ -188,20 +206,21 @@ class RateLimiter:
         with self.lock:
             self.order_times.append(time.time())
 
-    def wait_if_needed(self, is_order: bool = False) -> None:
+    def wait_if_needed(self, is_order: bool = False, priority: str = 'normal') -> None:
         """
         Wait if rate limits require it.
 
         Args:
             is_order: True if placing an order, False for regular request
+            priority: 'critical' or 'normal' for effective limits
         """
         if is_order:
-            can_proceed, wait_time = self.can_place_order()
+            can_proceed, wait_time = self.can_place_order(priority)
         else:
-            can_proceed, wait_time = self.can_make_request()
+            can_proceed, wait_time = self.can_make_request(priority=priority)
 
         if not can_proceed and wait_time:
-            logger.info(f"Rate limit reached. Waiting {wait_time:.1f}s...")
+            logger.info(f"Rate limit reached (priority:{priority}). Waiting {wait_time:.1f}s...")
             time.sleep(wait_time)
 
     def get_usage_stats(self) -> Dict[str, any]:
