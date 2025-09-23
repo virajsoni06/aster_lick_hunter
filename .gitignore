@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+
+# Claude Code workspace
 .claude/
 
 
@@ -52,7 +54,3 @@ build/
 config.ini
 secrets.json
 credentials.json
-
-#CLAUDE
-CLAUDE.md
-claude/
