@@ -168,12 +168,12 @@ def main():
 
         # Run the setup utility
         try:
-            result = subprocess.run([sys.executable, "setup_env.py"], check=False)
+            result = subprocess.run([sys.executable, "scripts/setup_env.py"], check=False)
             if result.returncode != 0:
                 print(f"\n{colorize_prefix('Launcher', Fore.RED)} Setup cancelled or failed. Exiting...")
                 sys.exit(1)
         except FileNotFoundError:
-            print(f"{colorize_prefix('Launcher', Fore.RED)} Error: setup_env.py not found!")
+            print(f"{colorize_prefix('Launcher', Fore.RED)} Error: scripts/setup_env.py not found!")
             print(f"{colorize_prefix('Launcher', Fore.RED)} Please create .env file manually with API_KEY and API_SECRET")
             print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Get your API key at: https://www.asterdex.com/en/referral/3TixB2")
             sys.exit(1)

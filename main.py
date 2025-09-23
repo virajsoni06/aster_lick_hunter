@@ -20,7 +20,7 @@ def main():
         # Run the setup utility
         try:
             import subprocess
-            result = subprocess.run([sys.executable, "setup_env.py"], check=False)
+            result = subprocess.run([sys.executable, "scripts/setup_env.py"], check=False)
             if result.returncode != 0:
                 print("\nSetup cancelled or failed. Exiting...")
                 sys.exit(1)

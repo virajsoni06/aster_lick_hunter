@@ -8,11 +8,14 @@ import time
 import sys
 import os
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Add project root and src to path for imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+src_path = os.path.join(project_root, 'src')
+sys.path.insert(0, src_path)
+sys.path.insert(0, project_root)
 
 from src.utils.rate_limiter import RateLimiter
-import endpoint_weights
+from src.utils.endpoint_weights import get_endpoint_weight
 
 def test_weight_mapping():
     """Test endpoint weight mapping."""
@@ -27,7 +30,7 @@ def test_weight_mapping():
     ]
 
     for endpoint, expected_weight in test_cases:
-        weight = endpoint_weights.get_endpoint_weight(endpoint)
+        weight = get_endpoint_weight(endpoint)
         status = "PASS" if weight == expected_weight else "FAIL"
         print(f"{endpoint}: {weight} (expected {expected_weight}) - {status}")
         if weight != expected_weight:

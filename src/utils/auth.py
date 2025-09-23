@@ -7,7 +7,7 @@ import random
 from src.utils.config import config
 from src.utils.rate_limiter import RateLimiter
 from src.utils.utils import log
-import endpoint_weights
+from src.utils.endpoint_weights import get_endpoint_weight
 
 # Global rate limiter instance
 rate_limiter = RateLimiter(reserve_pct=0.2)
@@ -23,7 +23,7 @@ def make_authenticated_request(method, url, data=None, params=None):
     # Get the endpoint weight
     parsed_url = urllib.parse.urlparse(url)
     endpoint_path = parsed_url.path
-    weight = endpoint_weights.get_endpoint_weight(endpoint_path)
+    weight = get_endpoint_weight(endpoint_path)
 
     # Determine priority for rate limiting
     is_order = False
