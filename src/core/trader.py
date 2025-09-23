@@ -489,8 +489,6 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
             log.info(f"{symbol}: Adjusting position size to ${adjusted_position_size:.2f}")
             position_size_usdt = adjusted_position_size
 
-        log.info(f"[DEBUG] Position size validated: ${position_size_usdt:.2f}, position_side: {position_side}")
-
         # Determine position side based on hedge mode
         hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
         if hedge_mode:
@@ -503,6 +501,8 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         else:
             # In one-way mode, always use BOTH
             position_side = 'BOTH'
+
+        log.info(f"[DEBUG] Position size validated: ${position_size_usdt:.2f}, position_side: {position_side}")
 
         # Check position limits using PositionManager
         if position_manager:
