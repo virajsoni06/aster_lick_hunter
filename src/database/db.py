@@ -92,6 +92,24 @@ def init_db(db_path):
         )
     ''')
 
+    # Create position_tranches table for tranche management
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS position_tranches (
+            tranche_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            position_side TEXT NOT NULL,  -- LONG or SHORT
+            avg_entry_price REAL NOT NULL,
+            total_quantity REAL NOT NULL,
+            tp_order_id TEXT,
+            sl_order_id TEXT,
+            price_band_lower REAL NOT NULL,  -- Lower bound of price band
+            price_band_upper REAL NOT NULL,  -- Upper bound of price band
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(symbol, position_side, price_band_lower, price_band_upper)
+        )
+    ''')
+
     # Add new columns to existing tables (migration for existing databases)
     # Check if columns exist before adding them
     cursor.execute("PRAGMA table_info(trades)")

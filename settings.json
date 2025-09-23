@@ -16,7 +16,9 @@
     "time_in_force": "GTC",
     "tranche_pnl_increment_pct": 5.0,
     "max_tranches_per_symbol_side": 5,
-    "open_orders_warning_threshold": 150
+    "open_orders_warning_threshold": 150,
+    "max_stop_orders_per_symbol": 8,
+    "enable_order_consolidation": true
   },
   "symbols": {
     "BTCUSDT": {

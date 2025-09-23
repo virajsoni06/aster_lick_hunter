@@ -73,6 +73,51 @@ class OrderCleanup:
             logger.error(f"Error getting open orders: {e}")
             return []
 
+    async def count_stop_orders(self, symbol: str, position_side: str = None) -> int:
+        """
+        Count active stop orders for a symbol and optional position side.
+
+        Args:
+            symbol: Trading symbol
+            position_side: Optional position side (LONG/SHORT) for hedge mode
+
+        Returns:
+            Number of active stop orders
+        """
+        try:
+            orders = await self.get_open_orders(symbol)
+            stop_count = 0
+
+            for order in orders:
+                order_type = order.get('type', '')
+                order_position_side = order.get('positionSide', 'BOTH')
+
+                # Check if it's a stop order
+                is_stop_order = order_type in [
+                    'TAKE_PROFIT_MARKET',
+                    'STOP_MARKET',
+                    'TAKE_PROFIT',
+                    'STOP',
+                    'STOP_LOSS',
+                    'TRAILING_STOP_MARKET'
+                ]
+
+                if is_stop_order:
+                    # If position_side specified, only count matching orders
+                    if position_side and position_side != 'BOTH':
+                        if order_position_side == position_side:
+                            stop_count += 1
+                    else:
+                        stop_count += 1
+
+            logger.debug(f"Found {stop_count} stop orders for {symbol}" +
+                        (f" {position_side}" if position_side else ""))
+            return stop_count
+
+        except Exception as e:
+            logger.error(f"Error counting stop orders for {symbol}: {e}")
+            return 0
+
     async def get_positions(self) -> Dict[str, Dict]:
         """
         Get all current positions from exchange.
