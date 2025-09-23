@@ -245,7 +245,7 @@ async def init_symbol_settings():
                 log.error(f"Failed to set leverage for {symbol}: {leverage_response.text}")
 
 def get_current_position_value(symbol, position_side='BOTH'):
-    """Get current position value in USDT for a symbol."""
+    """Get current position margin (collateral) in USDT for a symbol."""
     try:
         url = f"{config.BASE_URL}/fapi/v2/positionRisk"
         response = make_authenticated_request('GET', url)
@@ -260,9 +260,13 @@ def get_current_position_value(symbol, position_side='BOTH'):
 
                     position_amt = abs(float(pos.get('positionAmt', 0)))
                     mark_price = float(pos.get('markPrice', 0))
+                    leverage = float(pos.get('leverage', 1))
 
                     if position_amt > 0 and mark_price > 0:
-                        return position_amt * mark_price
+                        # Return margin used (notional / leverage), not notional value
+                        notional_value = position_amt * mark_price
+                        margin_used = notional_value / leverage
+                        return margin_used
             return 0.0
         else:
             log.error(f"Failed to get positions: {response.text}")
@@ -341,12 +345,13 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         # In one-way mode, always use BOTH
         position_side = 'BOTH'
 
-    # Check max position limit
+    # Check max position limit (based on margin/collateral, not notional)
     max_position_usdt = symbol_config.get('max_position_usdt', float('inf'))
-    current_position_value = get_current_position_value(symbol, position_side)
+    current_margin_used = get_current_position_value(symbol, position_side)
+    new_trade_margin = position_size_usdt / leverage  # Convert notional to margin
 
-    if current_position_value + position_size_usdt > max_position_usdt:
-        log.warning(f"Would exceed max position for {symbol}: current {current_position_value:.2f} + new {position_size_usdt:.2f} > max {max_position_usdt:.2f} USDT")
+    if current_margin_used + new_trade_margin > max_position_usdt:
+        log.warning(f"Would exceed max margin for {symbol}: current margin {current_margin_used:.2f} + new {new_trade_margin:.2f} > max {max_position_usdt:.2f} USDT")
         conn.close()
         return
 
