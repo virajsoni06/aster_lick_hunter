@@ -422,6 +422,8 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         log.debug(f"Symbol {symbol} not in config")
         return
 
+    log.info(f"[DEBUG] {symbol} passed config check")
+
     # Get symbol-specific settings
     symbol_config = config.SYMBOL_SETTINGS[symbol]
 
@@ -457,66 +459,96 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
 
     position_type = "LONG" if trade_side == "BUY" else "SHORT"
     log.threshold_met(symbol, volume, threshold)
+    log.info(f"[DEBUG] Evaluating {position_type} trade for {symbol} with volume {volume:.2f}, threshold {threshold}")
 
-    # Calculate position size from collateral and leverage
-    trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
-    leverage = symbol_config.get('leverage', 10)
-    position_size_usdt = trade_collateral_usdt * leverage  # Actual position size
+    # Catch any exception that stops execution
+    try:
+        # Log position manager status for debugging
+        if position_manager:
+            stats = position_manager.get_stats()
+            total_collateral = stats.get('total_collateral_used', 0)
+            pending = stats.get('pending_collateral', {}).get(symbol, 0)
+            log.info(f"[DEBUG] PositionManager: total_collateral=${total_collateral:.2f}, {symbol}_pending=${pending:.2f}, max_total=${position_manager.max_total_exposure_usdt}, {symbol}_max=${position_manager.max_position_usdt_per_symbol.get(symbol, 'inf')}")
+        else:
+            log.warning("[DEBUG] PositionManager is None! Using fallback margin check")
+            # Log current margin used via API for fallback logic
+            current_margin = get_current_position_value(symbol)
+            log.info(f"[DEBUG] Current margin for {symbol}: ${current_margin:.2f}, symbol_max=${symbol_config.get('max_position_usdt', 'inf')}")
 
-    # Check if position meets minimum notional requirement
-    min_notional = symbol_specs.get(symbol, {}).get('minNotional', MIN_NOTIONAL)
-    if position_size_usdt < min_notional:
-        # Adjust to minimum with small buffer to account for rounding
-        adjusted_position_size = min_notional * 1.1  # 10% buffer
-        log.warning(f"{symbol}: Position size ${position_size_usdt:.2f} below minimum ${min_notional}")
-        log.info(f"{symbol}: Adjusting position size to ${adjusted_position_size:.2f}")
-        position_size_usdt = adjusted_position_size
+        # Calculate position size from collateral and leverage
+        trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
+        leverage = symbol_config.get('leverage', 10)
+        position_size_usdt = trade_collateral_usdt * leverage  # Actual position size
 
-    # Determine position side based on hedge mode
-    hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
-    if hedge_mode:
-        # In hedge mode, position side must match the trade direction
-        # BUY opens LONG, SELL opens SHORT
-        if trade_side == 'BUY':
-            position_side = 'LONG'
-        else:  # SELL
-            position_side = 'SHORT'
-    else:
-        # In one-way mode, always use BOTH
-        position_side = 'BOTH'
+        # Check if position meets minimum notional requirement
+        min_notional = symbol_specs.get(symbol, {}).get('minNotional', MIN_NOTIONAL)
+        if position_size_usdt < min_notional:
+            # Adjust to minimum with small buffer to account for rounding
+            adjusted_position_size = min_notional * 1.1  # 10% buffer
+            log.warning(f"{symbol}: Position size ${position_size_usdt:.2f} below minimum ${min_notional}")
+            log.info(f"{symbol}: Adjusting position size to ${adjusted_position_size:.2f}")
+            position_size_usdt = adjusted_position_size
 
-    # Check position limits using PositionManager
-    if position_manager:
-        can_open, reason = position_manager.can_open_position(symbol, position_size_usdt, leverage)
-        if not can_open:
-            log.warning(f"Position manager rejected trade: {reason}")
+        log.info(f"[DEBUG] Position size validated: ${position_size_usdt:.2f}, position_side: {position_side}")
+
+        # Determine position side based on hedge mode
+        hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
+        if hedge_mode:
+            # In hedge mode, position side must match the trade direction
+            # BUY opens LONG, SELL opens SHORT
+            if trade_side == 'BUY':
+                position_side = 'LONG'
+            else:  # SELL
+                position_side = 'SHORT'
+        else:
+            # In one-way mode, always use BOTH
+            position_side = 'BOTH'
+
+        # Check position limits using PositionManager
+        if position_manager:
+            can_open, reason = position_manager.can_open_position(symbol, position_size_usdt, leverage)
+            if not can_open:
+                log.warning(f"[DEBUG] Position manager rejection for {symbol}: {reason}")
+                log.warning(f"Position manager rejected trade: {reason}")
+                conn.close()
+                return
+
+            # Add pending exposure for this order
+            position_manager.add_pending_exposure(symbol, position_size_usdt, leverage)
+        else:
+            # Fallback to old logic if position manager not initialized
+            max_position_usdt = symbol_config.get('max_position_usdt', float('inf'))
+            current_margin_used = get_current_position_value(symbol, position_side)
+            new_trade_margin = position_size_usdt / leverage  # Convert notional to margin
+
+            if current_margin_used + new_trade_margin > max_position_usdt:
+                log.warning(f"[DEBUG] Would exceed max margin for {symbol}: {current_margin_used:.2f} + {new_trade_margin:.2f} > {max_position_usdt:.2f} USDT")
+                log.warning(f"Would exceed max margin for {symbol}: current margin {current_margin_used:.2f} + new {new_trade_margin:.2f} > max {max_position_usdt:.2f} USDT")
+                conn.close()
+                return
+
+        log.info(f"[DEBUG] Position limits check passed for {symbol}")
+
+        # Calculate quantity from position size
+        trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
+
+        if trade_qty is None or trade_qty <= 0:
+            log.error(f"[DEBUG] Quantity calculation failed for {symbol}: qty={trade_qty}, position_size={position_size_usdt}, price={price}")
+            log.error(f"Could not calculate valid quantity for {symbol} with {trade_collateral_usdt} USDT collateral (${position_size_usdt} position)")
             conn.close()
             return
 
-        # Add pending exposure for this order
-        position_manager.add_pending_exposure(symbol, position_size_usdt, leverage)
-    else:
-        # Fallback to old logic if position manager not initialized
-        max_position_usdt = symbol_config.get('max_position_usdt', float('inf'))
-        current_margin_used = get_current_position_value(symbol, position_side)
-        new_trade_margin = position_size_usdt / leverage  # Convert notional to margin
+        log.info(f"[DEBUG] Quantity calculated successfully for {symbol}: {trade_qty}")
 
-        if current_margin_used + new_trade_margin > max_position_usdt:
-            log.warning(f"Would exceed max margin for {symbol}: current margin {current_margin_used:.2f} + new {new_trade_margin:.2f} > max {max_position_usdt:.2f} USDT")
-            conn.close()
-            return
+        offset_pct = symbol_config.get('price_offset_pct', 0.1)
+        await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
+        conn.close()  # Close the database connection
 
-    # Calculate quantity from position size
-    trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
-
-    if trade_qty is None or trade_qty <= 0:
-        log.error(f"Could not calculate valid quantity for {symbol} with {trade_collateral_usdt} USDT collateral (${position_size_usdt} position)")
+    except Exception as e:
+        log.error(f"[DEBUG] Exception in evaluate_trade after threshold for {symbol}: {e}")
+        import traceback
+        log.error(f"[DEBUG] Exception traceback: {traceback.format_exc()}")    
         conn.close()
-        return
-
-    offset_pct = symbol_config.get('price_offset_pct', 0.1)
-    await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
-    conn.close()  # Close the database connection
 
 def get_orderbook_price(symbol, side, fallback_price, offset_pct):
     """Get optimal price from orderbook or fallback to offset calculation."""

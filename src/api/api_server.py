@@ -798,9 +798,68 @@ def get_position_details(symbol, side):
         except Exception as e:
             print(f"Error fetching current price: {e}")
 
+        # Get open orders from exchange for this symbol
+        open_orders = []
+        tp_orders = []
+        sl_orders = []
+        try:
+            from src.utils.auth import make_authenticated_request
+            from src.utils.config import config as cfg
+
+            # Fetch open orders from exchange
+            response = make_authenticated_request('GET', f'{cfg.BASE_URL}/fapi/v1/openOrders', {'symbol': symbol})
+            if response.status_code == 200:
+                all_symbol_orders = response.json()
+
+                # Filter and categorize orders
+                for order in all_symbol_orders:
+                    order_type = order.get('type', '')
+                    order_side = order.get('side')
+                    position_side = order.get('positionSide', 'BOTH')
+
+                    # Check if order is for this position side
+                    if position_side == side or (position_side == 'BOTH' and side == 'BOTH'):
+                        order_info = {
+                            'order_id': str(order.get('orderId')),
+                            'type': order_type,
+                            'side': order_side,
+                            'quantity': float(order.get('origQty', 0)),
+                            'price': order.get('price', order.get('stopPrice', '0'))
+                        }
+                        open_orders.append(order_info)
+
+                        # Categorize as TP or SL
+                        if 'TAKE_PROFIT' in order_type or (order_type == 'LIMIT' and order_side != ('BUY' if side == 'LONG' else 'SELL')):
+                            tp_orders.append(order_info)
+                        elif 'STOP' in order_type and 'TAKE_PROFIT' not in order_type:
+                            sl_orders.append(order_info)
+        except Exception as e:
+            print(f"Error fetching open orders from exchange: {e}")
+
         tranches = []
         for row in cursor.fetchall():
             tranche_dict = dict(row)
+
+            # Override database TP/SL with actual exchange orders
+            # Match orders based on quantity (assuming one TP/SL per tranche quantity)
+            tranche_qty = tranche_dict.get('total_quantity', 0)
+
+            # Find matching TP order from exchange
+            tranche_dict['tp_order_id'] = None
+            for tp in tp_orders:
+                # Allow some tolerance for quantity matching (within 5%)
+                if abs(tp['quantity'] - tranche_qty) / tranche_qty < 0.05 if tranche_qty > 0 else False:
+                    tranche_dict['tp_order_id'] = tp['order_id']
+                    break
+
+            # Find matching SL order from exchange
+            tranche_dict['sl_order_id'] = None
+            for sl in sl_orders:
+                # Allow some tolerance for quantity matching (within 5%)
+                if abs(sl['quantity'] - tranche_qty) / tranche_qty < 0.05 if tranche_qty > 0 else False:
+                    tranche_dict['sl_order_id'] = sl['order_id']
+                    break
+
             # Calculate unrealized PNL if we have a current price
             if 'total_quantity' in tranche_dict and tranche_dict['total_quantity'] > 0:
                 qty = tranche_dict['total_quantity']
@@ -932,6 +991,7 @@ def get_position_details(symbol, side):
             'num_tranches': len(tranches)
         },
         'tranches': tranches,
+        'open_orders': open_orders if 'open_orders' in locals() else [],
         'order_relationships': order_relationships,
         'order_statuses': order_statuses,
         'trades': trades,
