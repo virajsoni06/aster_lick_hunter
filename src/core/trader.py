@@ -990,6 +990,10 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
     cleanup = OrderCleanup(conn)
     stop_order_count = await cleanup.count_stop_orders(symbol, position_side if position_side != 'BOTH' else None)
 
+    # Ensure cleanup is started if not already running
+    if not cleanup.running and not cleanup.cleanup_task:
+        cleanup.start()
+
     # Get max stop orders per symbol from config (default to 8 if not set)
     max_stop_orders = config.GLOBAL_SETTINGS.get('max_stop_orders_per_symbol', 8)
 

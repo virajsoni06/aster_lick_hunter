@@ -6,12 +6,18 @@ import asyncio
 import time
 import logging
 import sqlite3
+import sys
 from typing import List, Dict, Optional, Set
 from src.utils.auth import make_authenticated_request
 from src.utils.config import config
+from src.utils.utils import log
 from src.database.db import insert_order_relationship, get_db_conn
 
-logger = logging.getLogger(__name__)
+# Emergency debug
+EMERGENCY_DEBUG = True
+def emergency_print(msg):
+    if EMERGENCY_DEBUG:
+        print(f"[DEBUG:CLEANUP] {msg}", file=sys.stdout, flush=True)
 
 
 class OrderCleanup:
@@ -41,7 +47,7 @@ class OrderCleanup:
         # Track orders we've already tried to cancel during position closure
         self.processed_closure_orders: Set[str] = set()
 
-        logger.info(f"Order cleanup initialized: interval={cleanup_interval_seconds}s, stale_limit={stale_limit_order_minutes}min")
+        log.info(f"Order cleanup initialized: interval={cleanup_interval_seconds}s, stale_limit={stale_limit_order_minutes}min")
 
     async def get_open_orders(self, symbol: str = None) -> List[Dict]:
         """
@@ -63,14 +69,14 @@ class OrderCleanup:
 
             if response.status_code == 200:
                 orders = response.json()
-                logger.debug(f"Found {len(orders)} open orders" + (f" for {symbol}" if symbol else ""))
+                log.debug(f"Found {len(orders)} open orders" + (f" for {symbol}" if symbol else ""))
                 return orders
             else:
-                logger.error(f"Failed to get open orders: {response.text}")
+                log.error(f"Failed to get open orders: {response.text}")
                 return []
 
         except Exception as e:
-            logger.error(f"Error getting open orders: {e}")
+            log.error(f"Error getting open orders: {e}")
             return []
 
     async def count_stop_orders(self, symbol: str, position_side: str = None) -> int:
@@ -110,12 +116,12 @@ class OrderCleanup:
                     else:
                         stop_count += 1
 
-            logger.debug(f"Found {stop_count} stop orders for {symbol}" +
+            log.debug(f"Found {stop_count} stop orders for {symbol}" +
                         (f" {position_side}" if position_side else ""))
             return stop_count
 
         except Exception as e:
-            logger.error(f"Error counting stop orders for {symbol}: {e}")
+            log.error(f"Error counting stop orders for {symbol}: {e}")
             return 0
 
     async def get_positions(self) -> Dict[str, Dict]:
@@ -171,18 +177,18 @@ class OrderCleanup:
                                 'has_position': True
                             }
 
-                logger.debug(f"Found {len(positions)} position entries (hedge_mode={'on' if config.GLOBAL_SETTINGS.get('hedge_mode', False) else 'off'})")
+                log.debug(f"Found {len(positions)} position entries (hedge_mode={'on' if config.GLOBAL_SETTINGS.get('hedge_mode', False) else 'off'})")
                 # Log position details for debugging
                 for key, pos_data in positions.items():
                     if pos_data.get('has_position', False):
-                        logger.debug(f"  {key}: amount={pos_data.get('amount', 0)}, side={pos_data.get('side', 'N/A')}")
+                        log.debug(f"  {key}: amount={pos_data.get('amount', 0)}, side={pos_data.get('side', 'N/A')}")
                 return positions
             else:
-                logger.error(f"Failed to get positions: {response.text}")
+                log.error(f"Failed to get positions: {response.text}")
                 return {}
 
         except Exception as e:
-            logger.error(f"Error getting positions: {e}")
+            log.error(f"Error getting positions: {e}")
             return {}
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -199,11 +205,11 @@ class OrderCleanup:
         try:
             # Validate parameters
             if not symbol:
-                logger.error(f"Cannot cancel order {order_id}: symbol is missing or None")
+                log.error(f"Cannot cancel order {order_id}: symbol is missing or None")
                 return False
 
             if not order_id:
-                logger.error(f"Cannot cancel order for {symbol}: order_id is missing or None")
+                log.error(f"Cannot cancel order for {symbol}: order_id is missing or None")
                 return False
 
             url = f"{config.BASE_URL}/fapi/v1/order"
@@ -212,11 +218,11 @@ class OrderCleanup:
                 'orderId': str(order_id)
             }
 
-            logger.debug(f"Canceling order with params: {params}")
+            log.debug(f"Canceling order with params: {params}")
             response = make_authenticated_request('DELETE', url, params)
 
             if response.status_code == 200:
-                logger.info(f"Canceled orphaned order {order_id} for {symbol}")
+                log.info(f"Canceled orphaned order {order_id} for {symbol}")
 
                 # Update database
                 self.update_order_canceled(order_id)
@@ -232,10 +238,10 @@ class OrderCleanup:
 
                     if tp_order_id == order_id:
                         clear_tranche_orders(conn, tranche[0], clear_tp=True)
-                        logger.info(f"Cleared TP order {order_id} from tranche {tranche[0]}")
+                        log.info(f"Cleared TP order {order_id} from tranche {tranche[0]}")
                     elif sl_order_id == order_id:
                         clear_tranche_orders(conn, tranche[0], clear_sl=True)
-                        logger.info(f"Cleared SL order {order_id} from tranche {tranche[0]}")
+                        log.info(f"Cleared SL order {order_id} from tranche {tranche[0]}")
                 conn.close()
 
                 return True
@@ -246,7 +252,7 @@ class OrderCleanup:
                 error_msg = response_json.get('msg')
 
                 if error_code == -2011 and error_msg == "Unknown order sent.":
-                    logger.info(f"Order {order_id} already canceled or does not exist (treat as success)")
+                    log.info(f"Order {order_id} already canceled or does not exist (treat as success)")
                     # Update database as canceled to prevent further attempts
                     self.update_order_canceled(order_id)
 
@@ -261,19 +267,19 @@ class OrderCleanup:
 
                         if tp_order_id == order_id:
                             clear_tranche_orders(conn, tranche[0], clear_tp=True)
-                            logger.info(f"Cleared already-canceled TP order {order_id} from tranche {tranche[0]}")
+                            log.info(f"Cleared already-canceled TP order {order_id} from tranche {tranche[0]}")
                         elif sl_order_id == order_id:
                             clear_tranche_orders(conn, tranche[0], clear_sl=True)
-                            logger.info(f"Cleared already-canceled SL order {order_id} from tranche {tranche[0]}")
+                            log.info(f"Cleared already-canceled SL order {order_id} from tranche {tranche[0]}")
                     conn.close()
 
                     return True
                 else:
-                    logger.error(f"Failed to cancel order {order_id}: {response.text}")
+                    log.error(f"Failed to cancel order {order_id}: {response.text}")
                     return False
 
         except Exception as e:
-            logger.error(f"Error canceling order {order_id}: {e}")
+            log.error(f"Error canceling order {order_id}: {e}")
             return False
 
     def is_order_related_to_position(self, order_id: str, symbol: str) -> bool:
@@ -303,12 +309,12 @@ class OrderCleanup:
 
             if result:
                 order_type = "TP" if str(result[1]) == str(order_id) else "SL"
-                logger.debug(f"Order {order_id} is a {order_type} order related to main order {result[0]}")
+                log.debug(f"Order {order_id} is a {order_type} order related to main order {result[0]}")
                 return True
             return False
 
         except Exception as e:
-            logger.error(f"Error checking order relationship for {order_id}: {e}")
+            log.error(f"Error checking order relationship for {order_id}: {e}")
             return False
 
     async def cleanup_orphaned_tp_sl(self, positions: Dict[str, Dict]) -> int:
@@ -349,7 +355,7 @@ class OrderCleanup:
                 # IMPORTANT: Don't cancel orders younger than 60 seconds
                 # This prevents race conditions where positions haven't registered yet
                 if order_age_seconds < 60:
-                    logger.debug(f"Skipping young {order_type} order {order_id} for {symbol} (age: {order_age_seconds:.1f}s)")
+                    log.debug(f"Skipping young {order_type} order {order_id} for {symbol} (age: {order_age_seconds:.1f}s)")
                     continue
 
                 # First check if this order is tracked in our order relationships
@@ -379,9 +385,9 @@ class OrderCleanup:
                                 # No position exists at all for this symbol
                                 should_cancel = True
                                 if is_tracked:
-                                    logger.warning(f"Found TRACKED but orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
+                                    log.warning(f"Found TRACKED but orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
                                 else:
-                                    logger.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
+                                    log.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
                     else:
                         # BOTH position side in hedge mode - check if any position exists
                         position = positions.get(symbol)
@@ -389,9 +395,9 @@ class OrderCleanup:
                             # No position exists for this symbol
                             should_cancel = True
                             if is_tracked:
-                                logger.warning(f"Found TRACKED but orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                                log.warning(f"Found TRACKED but orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
                             else:
-                                logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                                log.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
                 else:
                     # One-way mode
                     position = positions.get(symbol)
@@ -399,9 +405,9 @@ class OrderCleanup:
                         # No position exists for this symbol
                         should_cancel = True
                         if is_tracked:
-                            logger.warning(f"Found TRACKED but orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                            log.warning(f"Found TRACKED but orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
                         else:
-                            logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                            log.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
 
                 if should_cancel:
                     # Additional safety check: Query database for recent main orders
@@ -419,14 +425,14 @@ class OrderCleanup:
                     recent_fills = cursor.fetchone()[0]
                     conn.close()
                     if recent_fills > 0:
-                        logger.info(f"Skipping cancellation of {order_type} order {order_id} - found recent fills for {symbol}")
+                        log.info(f"Skipping cancellation of {order_type} order {order_id} - found recent fills for {symbol}")
                         continue
 
                     if await self.cancel_order(symbol, order_id):
                         canceled_count += 1
 
         if canceled_count > 0:
-            logger.info(f"Canceled {canceled_count} orphaned TP/SL orders")
+            log.info(f"Canceled {canceled_count} orphaned TP/SL orders")
 
         return canceled_count
 
@@ -454,16 +460,16 @@ class OrderCleanup:
                 if age_seconds > self.stale_limit_order_seconds:
                     # Check if this LIMIT order is actually a tracked TP/SL order
                     if self.is_order_related_to_position(order_id, symbol):
-                        logger.debug(f"Skipping tracked TP/SL limit order {order_id} for {symbol} (age: {age_seconds:.0f}s)")
+                        log.debug(f"Skipping tracked TP/SL limit order {order_id} for {symbol} (age: {age_seconds:.0f}s)")
                         continue
 
-                    logger.warning(f"Found stale limit order {order_id} for {symbol}, age: {age_seconds:.0f}s")
+                    log.warning(f"Found stale limit order {order_id} for {symbol}, age: {age_seconds:.0f}s")
 
                     if await self.cancel_order(symbol, order_id):
                         canceled_count += 1
 
         if canceled_count > 0:
-            logger.info(f"Canceled {canceled_count} stale limit orders")
+            log.info(f"Canceled {canceled_count} stale limit orders")
 
         return canceled_count
 
@@ -484,7 +490,7 @@ class OrderCleanup:
             response = make_authenticated_request('GET', url)
 
             if response.status_code != 200:
-                logger.error(f"Failed to get position details: {response.text}")
+                log.error(f"Failed to get position details: {response.text}")
                 return 0
 
             position_details = {}
@@ -535,14 +541,14 @@ class OrderCleanup:
                 position_side = pos_detail['position_side']
 
                 if entry_price == 0:
-                    logger.warning(f"Position {symbol} has no entry price, skipping protection")
+                    log.warning(f"Position {symbol} has no entry price, skipping protection")
                     continue
 
                 # Get symbol configuration
                 symbol_config = cfg.SYMBOL_SETTINGS.get(symbol, {})
 
                 if not symbol_config:
-                    logger.debug(f"No configuration for {symbol}, skipping protection check")
+                    log.debug(f"No configuration for {symbol}, skipping protection check")
                     continue
 
                 # Check if tranches exist and have TP/SL configured
@@ -558,7 +564,7 @@ class OrderCleanup:
                         sl_order_id = tranche[6] if len(tranche) > 6 else None
                         if tp_order_id or sl_order_id:
                             tranche_has_tp_sl = True
-                            logger.debug(f"Found tranche for {symbol} {position_side} with TP={tp_order_id}, SL={sl_order_id}")
+                            log.debug(f"Found tranche for {symbol} {position_side} with TP={tp_order_id}, SL={sl_order_id}")
                             break
                 conn.close()
 
@@ -572,8 +578,8 @@ class OrderCleanup:
 
                 # Debug logging for order tracking
                 if symbol in symbol_orders:
-                    logger.debug(f"Orders for {symbol}: {symbol_orders[symbol]}")
-                    logger.debug(f"Checking position side '{order_side_key}' for {symbol}, found orders: {existing_orders}")
+                    log.debug(f"Orders for {symbol}: {symbol_orders[symbol]}")
+                    log.debug(f"Checking position side '{order_side_key}' for {symbol}, found orders: {existing_orders}")
 
                 # Check for TP orders (could be LIMIT orders acting as TP)
                 has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']
@@ -587,7 +593,7 @@ class OrderCleanup:
 
                 # Prepare TP order if missing
                 if symbol_config.get('take_profit_enabled', False) and not has_tp:
-                    logger.warning(f"Position {symbol} {position_side} missing TP order! Amount: {position_amount}, Entry: {entry_price}")
+                    log.warning(f"Position {symbol} {position_side} missing TP order! Amount: {position_amount}, Entry: {entry_price}")
 
                     # Calculate TP price
                     tp_pct = symbol_config.get('take_profit_pct', 2.0)
@@ -616,18 +622,18 @@ class OrderCleanup:
                         tp_order['reduceOnly'] = 'true'
 
                     orders_to_place.append(tp_order)
-                    logger.info(f"Will place recovery TP order for {symbol} at {tp_price}")
+                    log.info(f"Will place recovery TP order for {symbol} at {tp_price}")
 
                 # Prepare SL order if missing
                 if symbol_config.get('stop_loss_enabled', False) and not has_sl:
-                    logger.warning(f"Position {symbol} {position_side} missing SL order! Amount: {position_amount}, Entry: {entry_price}")
+                    log.warning(f"Position {symbol} {position_side} missing SL order! Amount: {position_amount}, Entry: {entry_price}")
 
                     # Check if should use trailing stop
                     if symbol_config.get('use_trailing_stop', False):
                         # For recovery orders, use fixed stop loss instead
                         # Trailing stops are difficult to place after position is already open
                         # as they may immediately trigger if market has moved
-                        logger.info(f"Converting trailing stop to fixed stop for recovery order on {symbol}")
+                        log.info(f"Converting trailing stop to fixed stop for recovery order on {symbol}")
 
                         # Use fixed stop loss for recovery
                         sl_pct = symbol_config.get('stop_loss_pct', 5.0)
@@ -648,7 +654,7 @@ class OrderCleanup:
                             'quantity': str(abs(position_amount)),
                             'positionSide': position_side
                         }
-                        logger.info(f"Will place recovery stop loss for {symbol} at {formatted_sl_price}")
+                        log.info(f"Will place recovery stop loss for {symbol} at {formatted_sl_price}")
                     else:
                         # Fixed stop loss
                         sl_pct = symbol_config.get('stop_loss_pct', 5.0)
@@ -670,7 +676,7 @@ class OrderCleanup:
                             'quantity': str(abs(position_amount)),
                             'positionSide': position_side
                         }
-                        logger.info(f"Will place recovery SL order for {symbol} at {formatted_sl_price}")
+                        log.info(f"Will place recovery SL order for {symbol} at {formatted_sl_price}")
 
                     if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
                         sl_order['reduceOnly'] = 'true'
@@ -693,7 +699,7 @@ class OrderCleanup:
                                 if 'orderId' in result:
                                     order_id = str(result['orderId'])
                                     order_type = orders_to_place[i]['type']
-                                    logger.info(f"Successfully placed recovery {order_type} order {order_id} for {symbol}")
+                                    log.info(f"Successfully placed recovery {order_type} order {order_id} for {symbol}")
                                     repaired_count += 1
 
                                     # Track the order IDs for relationship storage
@@ -704,7 +710,7 @@ class OrderCleanup:
                                     else:
                                         sl_order_id = order_id
                                 else:
-                                    logger.error(f"Failed to place recovery order: {result}")
+                                    log.error(f"Failed to place recovery order: {result}")
 
                             # Collect recovery orders for batch storage
                             if tp_order_id or sl_order_id:
@@ -715,9 +721,9 @@ class OrderCleanup:
                                     'sl_order_id': sl_order_id,
                                     'timestamp': int(time.time())
                                 })
-                                logger.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
+                                log.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
                         else:
-                            logger.error(f"Failed to place recovery orders: {resp.text}")
+                            log.error(f"Failed to place recovery orders: {resp.text}")
                     else:
                         # Single order
                         tp_order_id = None
@@ -728,7 +734,7 @@ class OrderCleanup:
                                 result = resp.json()
                                 order_id = str(result.get('orderId'))
                                 order_type = order['type']
-                                logger.info(f"Successfully placed recovery {order_type} order {order_id} for {symbol}")
+                                log.info(f"Successfully placed recovery {order_type} order {order_id} for {symbol}")
                                 repaired_count += 1
 
                                 # Track the order ID for relationship storage
@@ -736,7 +742,7 @@ class OrderCleanup:
                                 # Based on logs, these are always TP orders
                                 tp_order_id = order_id
                             else:
-                                logger.error(f"Failed to place recovery order: {resp.text}")
+                                log.error(f"Failed to place recovery order: {resp.text}")
 
                         # Collect recovery order for batch storage
                         if tp_order_id or sl_order_id:
@@ -747,14 +753,14 @@ class OrderCleanup:
                                 'sl_order_id': sl_order_id,
                                 'timestamp': int(time.time())
                             })
-                            logger.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
+                            log.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
                 elif orders_to_place and cfg.SIMULATE_ONLY:
-                    logger.info(f"SIMULATE: Would place {len(orders_to_place)} recovery orders for {symbol}")
+                    log.info(f"SIMULATE: Would place {len(orders_to_place)} recovery orders for {symbol}")
                     repaired_count += len(orders_to_place)
 
             # Batch store all recovery order relationships and update tranches
             if recovery_orders_to_track:
-                logger.info(f"Storing {len(recovery_orders_to_track)} recovery order relationships")
+                log.info(f"Storing {len(recovery_orders_to_track)} recovery order relationships")
                 for recovery_order in recovery_orders_to_track:
                     try:
                         # Create a fresh connection for each operation
@@ -777,13 +783,13 @@ class OrderCleanup:
                             # Use the first/primary tranche
                             tranche_id = tranches[0][0]  # First column is tranche_id
                             if update_tranche_orders(conn, tranche_id, recovery_order['tp_order_id'], recovery_order['sl_order_id']):
-                                logger.info(f"Updated tranche {tranche_id} with recovery TP/SL orders")
+                                log.info(f"Updated tranche {tranche_id} with recovery TP/SL orders")
                             else:
-                                logger.warning(f"Failed to update tranche {tranche_id} with recovery orders")
+                                log.warning(f"Failed to update tranche {tranche_id} with recovery orders")
 
                         conn.commit()
                         conn.close()
-                        logger.info(f"Stored recovery order relationship for {recovery_order['symbol']}: "
+                        log.info(f"Stored recovery order relationship for {recovery_order['symbol']}: "
                                   f"tp={recovery_order['tp_order_id']}, sl={recovery_order['sl_order_id']}")
 
                         # Mark recovery orders as protected to prevent immediate cancellation
@@ -793,21 +799,21 @@ class OrderCleanup:
                             self.processed_closure_orders.discard(recovery_order['sl_order_id'])  # Ensure not in closure set
 
                     except Exception as e:
-                        logger.error(f"Error storing recovery order relationship for {recovery_order['symbol']}: {e}")
+                        log.error(f"Error storing recovery order relationship for {recovery_order['symbol']}: {e}")
                         # Continue with next order even if one fails
                         continue
 
             if repaired_count > 0:
-                logger.info(f"Repaired {repaired_count} missing TP/SL orders")
+                log.info(f"Repaired {repaired_count} missing TP/SL orders")
             else:
-                logger.debug("All positions have proper TP/SL protection")
+                log.debug("All positions have proper TP/SL protection")
 
             return repaired_count
 
         except Exception as e:
-            logger.error(f"Error checking position protection: {e}")
+            log.error(f"Error checking position protection: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            log.error(traceback.format_exc())
             return 0
 
     async def cleanup_on_position_close(self, symbol: str) -> int:
@@ -830,7 +836,7 @@ class OrderCleanup:
 
             # Skip if we've already processed this order for closure
             if order_id in self.processed_closure_orders:
-                logger.debug(f"Skipping already processed closure order {order_id}")
+                log.debug(f"Skipping already processed closure order {order_id}")
                 continue
 
             # Cancel all TP/SL/STOP orders for this symbol
@@ -843,14 +849,14 @@ class OrderCleanup:
             ] or reduce_only
 
             if is_tp_sl:
-                logger.info(f"Canceling {order_type} order {order_id} due to position closure")
+                log.info(f"Canceling {order_type} order {order_id} due to position closure")
                 if await self.cancel_order(symbol, order_id):
                     canceled_count += 1
                 # Mark as processed even if cancel failed, to prevent re-attempts
                 self.processed_closure_orders.add(order_id)
 
         if canceled_count > 0:
-            logger.info(f"Canceled {canceled_count} orders for closed position {symbol}")
+            log.info(f"Canceled {canceled_count} orders for closed position {symbol}")
 
         return canceled_count
 
@@ -862,7 +868,7 @@ class OrderCleanup:
             Dict with counts of different cleanup actions
         """
         try:
-            logger.debug("Running order cleanup cycle")
+            log.debug("Running order cleanup cycle")
 
             # Get current positions
             positions = await self.get_positions()
@@ -877,10 +883,10 @@ class OrderCleanup:
             total_canceled = orphaned_canceled + stale_canceled
 
             if total_canceled > 0:
-                logger.info(f"Cleanup cycle complete: {total_canceled} orders canceled")
+                log.info(f"Cleanup cycle complete: {total_canceled} orders canceled")
 
             if missing_protection > 0:
-                logger.warning(f"Position protection check: {missing_protection} positions missing TP/SL orders")
+                log.warning(f"Position protection check: {missing_protection} positions missing TP/SL orders")
 
             return {
                 'orphaned_tp_sl': orphaned_canceled,
@@ -890,31 +896,52 @@ class OrderCleanup:
             }
 
         except Exception as e:
-            logger.error(f"Error in cleanup cycle: {e}")
+            log.error(f"Error in cleanup cycle: {e}")
             return {'orphaned_tp_sl': 0, 'stale_limits': 0, 'missing_protection': 0, 'total': 0}
 
     async def cleanup_loop(self) -> None:
         """
         Main cleanup loop that runs periodically.
         """
-        logger.info(f"Starting order cleanup loop (every {self.cleanup_interval_seconds}s)")
+        emergency_print("cleanup_loop ENTERED")  # Emergency debug print
+        emergency_print(f"Task: {asyncio.current_task()}")
+
+        # DIRECT PRINT to bypass all logging issues
+        print(f"[DIRECT] Starting order cleanup loop (every {self.cleanup_interval_seconds}s)", flush=True)
+        print(f"[DIRECT] Cleanup loop task: {asyncio.current_task()}", flush=True)
+
+        print("[DIRECT-BEFORE-LOGGER] About to call logger", flush=True)
+        log.info(f"Starting order cleanup loop (every {self.cleanup_interval_seconds}s)")
+        log.info(f"Cleanup loop task: {asyncio.current_task()}")
+        print("[DIRECT-AFTER-LOGGER] Called logger", flush=True)
+
+        emergency_print("cleanup_loop logging completed")
+
+        # Small initial delay to allow bot to fully start
+        await asyncio.sleep(1)
+        emergency_print("cleanup_loop initial sleep completed")
 
         while self.running:
             try:
-                logger.info("Running cleanup cycle...")
+                log.info("Running cleanup cycle...")
                 # Run cleanup cycle
-                await self.run_cleanup_cycle()
+                result = await self.run_cleanup_cycle()
+                log.debug(f"Cleanup cycle completed: {result}")
 
                 # Wait for next cycle
+                log.debug(f"Sleeping for {self.cleanup_interval_seconds} seconds until next cleanup cycle")
                 await asyncio.sleep(self.cleanup_interval_seconds)
 
             except asyncio.CancelledError:
+                log.info("Cleanup task cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error in cleanup loop: {e}")
+                log.error(f"Error in cleanup loop: {e}")
+                import traceback
+                log.error(f"Traceback: {traceback.format_exc()}")
                 await asyncio.sleep(self.cleanup_interval_seconds)
 
-        logger.info("Order cleanup loop stopped")
+        log.info("Order cleanup loop stopped")
 
     def start(self) -> None:
         """Start the cleanup task."""
@@ -924,11 +951,21 @@ class OrderCleanup:
                 # Get the running event loop
                 loop = asyncio.get_running_loop()
                 self.cleanup_task = loop.create_task(self.cleanup_loop())
-                logger.info(f"Order cleanup task created: {self.cleanup_task}")
-                logger.info("Order cleanup started successfully")
+                log.info(f"Order cleanup task created: {self.cleanup_task}")
+                log.info("Order cleanup started successfully")
+
+                # Log immediate verification
+                log.info(f"Cleanup state: running={self.running}, task={self.cleanup_task is not None}")
+                log.info(f"Event loop: {loop}, active tasks: {len(asyncio.all_tasks(loop))}")
+
+                # Force immediate scheduling check
+                if hasattr(loop, '_ready'):
+                    log.info(f"Event loop ready queue length: {len(loop._ready)}")
+
             except RuntimeError as e:
-                logger.error(f"Failed to start order cleanup: {e}")
-                logger.error("Make sure start() is called from within an async context")
+                log.error(f"Failed to start order cleanup: {e}")
+                log.error("Make sure start() is called from within an async context")
+                self.running = False
 
     def stop(self) -> None:
         """Stop the cleanup task."""
@@ -936,7 +973,7 @@ class OrderCleanup:
         if self.cleanup_task:
             self.cleanup_task.cancel()
             self.cleanup_task = None
-            logger.info("Order cleanup stopped")
+            log.info("Order cleanup stopped")
 
     def register_order(self, symbol: str, order_id: str) -> None:
         """
@@ -970,4 +1007,4 @@ class OrderCleanup:
             conn.commit()
             conn.close()
         except Exception as e:
-            logger.error(f"Error updating canceled order in DB: {e}")
+            log.error(f"Error updating canceled order in DB: {e}")

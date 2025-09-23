@@ -103,6 +103,17 @@ def main():
         order_cleanup.start()
         log.info(f"Order cleanup started: interval={cleanup_interval}s, stale_limit={stale_limit_minutes}min")
 
+        # Small delay to ensure task gets scheduled
+        await asyncio.sleep(0.5)
+
+        # Verify cleanup task is running
+        if order_cleanup.cleanup_task and not order_cleanup.cleanup_task.done():
+            log.info("[OK] OrderCleanup task confirmed running")
+            # Extra delay to allow initial cleanup_loop log to appear
+            await asyncio.sleep(0.1)
+        else:
+            log.warning("[WARN] OrderCleanup task may have failed to start")
+
         # Initialize user data stream for real-time position updates
         user_stream = UserDataStream(
             order_manager=None,  # Can add OrderManager if needed
