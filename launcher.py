@@ -67,6 +67,8 @@ def run_bot():
             env=env
             # Don't capture stdout/stderr - let it print directly with colors
         )
+        processes.append(process)
+        process.wait()  # Wait for the process to complete to keep thread alive
     else:
         # On Unix-like systems, we can capture and add prefix
         env = os.environ.copy()
@@ -118,6 +120,8 @@ def run_dashboard():
             env=env
             # Don't capture stdout/stderr - let it print directly with colors
         )
+        processes.append(process)
+        process.wait()  # Wait for the process to complete to keep thread alive
     else:
         # On Unix-like systems, we can capture and add prefix
         env = os.environ.copy()
