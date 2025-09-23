@@ -4,16 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aster Bot - Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(180deg, #0f0f0f 0%, #1a1a1a 100%);
+            color: #ffffff;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -22,69 +18,77 @@
         }
 
         .setup-container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
+            background: #1f1f1f;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
             width: 100%;
             overflow: hidden;
+            border: 1px solid #2d2d2d;
         }
 
         .setup-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: #1f1f1f;
             padding: 30px;
             text-align: center;
+            border-bottom: 1px solid #2d2d2d;
         }
 
         .setup-header h1 {
-            font-size: 28px;
+            font-size: 26px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             margin-bottom: 10px;
         }
 
         .setup-header p {
-            opacity: 0.9;
+            color: #a0a0a0;
             font-size: 14px;
         }
 
         .setup-content {
             padding: 40px 30px;
+            background: #1a1a1a;
         }
 
         .status-message {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
+            background: #2a2a2a;
+            border-left: 4px solid #3b82f6;
             padding: 15px;
             margin-bottom: 30px;
-            border-radius: 4px;
+            border-radius: 8px;
+            color: #ffffff;
         }
 
         .status-message.error {
-            border-left-color: #dc3545;
-            background: #fff5f5;
+            border-left-color: #ef4444;
+            background: #2a1a1a;
         }
 
         .status-message.success {
-            border-left-color: #28a745;
-            background: #f0fff4;
+            border-left-color: #22c55e;
+            background: #1a2a1a;
         }
 
         .steps-box {
-            background: #f8f9fa;
+            background: #2a2a2a;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 30px;
+            border: 1px solid #2d2d2d;
         }
 
         .steps-box h3 {
-            color: #333;
+            color: #ffffff;
             margin-bottom: 15px;
             font-size: 18px;
         }
 
         .steps-box ol {
             padding-left: 20px;
-            color: #666;
+            color: #a0a0a0;
         }
 
         .steps-box li {
@@ -93,18 +97,20 @@
         }
 
         .referral-link {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
             color: white;
             padding: 15px;
             border-radius: 8px;
             text-align: center;
             margin-bottom: 30px;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.3s;
+            border: 1px solid #3b82f6;
         }
 
         .referral-link:hover {
             transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(59, 130, 246, 0.4);
         }
 
         .referral-link a {
@@ -124,26 +130,29 @@
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #ffffff;
             font-weight: 500;
         }
 
         .form-group input {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e1e4e8;
+            border: 1px solid #2d2d2d;
             border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.3s;
+            background: #2a2a2a;
+            color: #ffffff;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #3b82f6;
+            background: #1f1f1f;
         }
 
         .form-group small {
-            color: #666;
+            color: #a0a0a0;
             font-size: 12px;
             margin-top: 5px;
             display: block;
@@ -167,22 +176,24 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
             color: white;
+            border: none;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 20px rgba(59, 130, 246, 0.4);
         }
 
         .btn-secondary {
-            background: #f8f9fa;
-            color: #333;
+            background: #2a2a2a;
+            color: #ffffff;
+            border: 1px solid #2d2d2d;
         }
 
         .btn-secondary:hover {
-            background: #e9ecef;
+            background: #3a3a3a;
         }
 
         .btn:disabled {
@@ -191,15 +202,15 @@
         }
 
         .existing-config {
-            background: #e7f5ff;
-            border: 1px solid #74c0fc;
+            background: #1a2a1a;
+            border: 1px solid #22c55e;
             border-radius: 6px;
             padding: 15px;
             margin-bottom: 20px;
         }
 
         .existing-config p {
-            color: #1c7ed6;
+            color: #22c55e;
             margin-bottom: 10px;
         }
 
@@ -207,8 +218,8 @@
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #667eea;
+            border: 2px solid #2a2a2a;
+            border-top: 2px solid #3b82f6;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-right: 8px;
