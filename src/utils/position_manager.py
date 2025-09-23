@@ -7,7 +7,7 @@ import logging
 import math
 from typing import Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
-from threading import Lock
+from threading import RLock
 from src.utils.config import config
 
 logger = logging.getLogger(__name__)
@@ -58,8 +58,8 @@ class PositionManager:
         # Track pending orders that would affect positions
         self.pending_exposure: Dict[str, float] = {}  # symbol -> pending USDT
 
-        # Thread safety
-        self.lock = Lock()
+        # Thread safety - using RLock to prevent deadlock when methods call each other
+        self.lock = RLock()
 
         logger.info(f"Position manager initialized with total collateral limit={max_total_exposure_usdt} USDT")
 
@@ -84,7 +84,8 @@ class PositionManager:
             # Get current margin used for symbol
             current_margin_used = 0.0
             if symbol in self.positions:
-                current_margin_used = self.positions[symbol].margin_used
+                # Sum margin across all tranches for this symbol
+                current_margin_used = sum(p.margin_used for p in self.positions[symbol].values())
 
             # Include pending margin if requested
             pending_margin = 0.0
@@ -103,7 +104,8 @@ class PositionManager:
                 return False, reason
 
             # Calculate total margin/collateral across all positions
-            total_margin_used = sum(p.margin_used for p in self.positions.values())
+            # Note: self.positions is nested: symbol -> tranche_id -> Position
+            total_margin_used = sum(p.margin_used for tranches in self.positions.values() for p in tranches.values())
             total_pending_margin = sum(self.pending_exposure.values()) if include_pending else 0
             new_total_margin = total_margin_used + total_pending_margin + new_margin_required
 

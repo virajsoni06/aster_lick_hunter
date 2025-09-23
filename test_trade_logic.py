@@ -174,8 +174,17 @@ async def test_trade_logic():
     # Replace with logged version
     trader_module.evaluate_trade = logged_evaluate_trade
 
-    # Run the evaluation
-    result = await evaluate_trade(test_symbol, "SELL", 1.0, 4000.0)
+    # Run the evaluation with timeout
+    import asyncio
+    try:
+        result = await asyncio.wait_for(
+            evaluate_trade(test_symbol, "SELL", 1.0, 4000.0),
+            timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        print("\n[TIMEOUT] evaluate_trade hung for more than 5 seconds!")
+        print("The function is stuck somewhere in the try block.")
+        result = None
 
     if result:
         print("\n[PASSED] TEST PASSED: Trade would be placed")
