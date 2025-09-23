@@ -472,7 +472,7 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
             log.info(f"Simulating main order: {json.dumps(main_order, indent=2)}")
             main_order_id = f'simulated_main_{int(time.time())}'
             insert_trade(conn, symbol, main_order_id, side, qty, entry_price, 'SIMULATED',
-                        None, 'LIMIT', None)
+                        None, 'LIMIT', None, filled_qty=0, avg_price=entry_price)
 
             # Simulate TP/SL placement
             if tp_sl_params:
@@ -491,8 +491,13 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
             fill_price = float(resp_data.get('avgPrice', entry_price)) if resp_data.get('avgPrice') else entry_price
 
             log.info(f"Placed main order {order_id}: {symbol} {side} {qty} @ {entry_price}, status: {status}")
+            # Extract filled quantity and average price from response
+            executed_qty = float(resp_data.get('executedQty', 0))
+            avg_price_str = resp_data.get('avgPrice', '0')
+            avg_price = float(avg_price_str) if avg_price_str != '0' and avg_price_str != '0.00000' else entry_price
+
             insert_trade(conn, symbol, order_id, side, qty, entry_price, status,
-                       json.dumps(resp_data), 'LIMIT', None)
+                       json.dumps(resp_data), 'LIMIT', None, filled_qty=executed_qty, avg_price=avg_price)
 
             # If order is already filled (FILLED status), place TP/SL immediately
             if status == 'FILLED' and tp_sl_params:
@@ -508,13 +513,13 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
         else:
             log.error(f"Order failed: {response.status_code} {response.text}")
             insert_trade(conn, symbol, 'failed', side, qty, entry_price, 'FAILED',
-                       response.text, 'LIMIT', None)
+                       response.text, 'LIMIT', None, filled_qty=0, avg_price=entry_price)
             return None
 
     except Exception as e:
         log.error(f"Error placing order: {e}")
         insert_trade(conn, symbol, 'error', side, qty, entry_price, 'ERROR',
-                   str(e), 'LIMIT', None)
+                   str(e), 'LIMIT', None, filled_qty=0, avg_price=entry_price)
         return None
     finally:
         # Always close the database connection
@@ -842,7 +847,7 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                 order_id = f'simulated_{order_type}_{int(time.time())}'
                 log.info(f"Simulating {order_type} order: {json.dumps(order, indent=2)}")
                 insert_trade(conn, symbol, order_id, order['side'], qty, order_price, 'SIMULATED',
-                            None, order_type, main_order_id)
+                            None, order_type, main_order_id, filled_qty=0, avg_price=order_price)
         else:
             # Track which order IDs are for TP and SL
             tp_order_id = None
@@ -861,10 +866,15 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                             order_type = tp_sl_orders[i]['type']
                             log.info(f"Placed {order_type} order {order_id}")
                             price_field = tp_sl_orders[i].get('stopPrice', 'N/A')
+                            # Extract filled data from response if available
+                            executed_qty = float(result.get('executedQty', 0)) if 'executedQty' in result else 0
+                            avg_price_str = result.get('avgPrice', '0')
+                            avg_price = float(avg_price_str) if avg_price_str != '0' and avg_price_str != '0.00000' else price_field
+
                             insert_trade(conn, symbol, order_id, tp_sl_orders[i]['side'], qty,
                                        price_field,
                                        result.get('status', 'NEW'), json.dumps(result),
-                                       order_type, main_order_id)
+                                       order_type, main_order_id, filled_qty=executed_qty, avg_price=avg_price)
 
                             # Track TP/SL order IDs
                             if 'TAKE_PROFIT' in order_type:
@@ -885,10 +895,15 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                         order_type = order['type']
                         log.info(f"Placed {order_type} order {order_id}")
                         price_field = order.get('stopPrice', 'N/A')
+                        # Extract filled data from response
+                        executed_qty = float(resp_data.get('executedQty', 0))
+                        avg_price_str = resp_data.get('avgPrice', '0')
+                        avg_price = float(avg_price_str) if avg_price_str != '0' and avg_price_str != '0.00000' else price_field
+
                         insert_trade(conn, symbol, order_id, order['side'], qty,
                                    price_field,
                                    resp_data.get('status', 'NEW'), json.dumps(resp_data),
-                                   order_type, main_order_id)
+                                   order_type, main_order_id, filled_qty=executed_qty, avg_price=avg_price)
 
                         # Track TP/SL order IDs
                         if 'TAKE_PROFIT' in order_type:

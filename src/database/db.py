@@ -180,12 +180,23 @@ def get_usdt_volume_in_window(conn, symbol, window_sec):
     result = cursor.fetchone()[0]
     return result or 0.0
 
-def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None, order_type=None, parent_order_id=None):
+def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None, order_type=None, parent_order_id=None,
+                 exchange_trade_id=None, realized_pnl=0, commission=0, filled_qty=0, avg_price=0):
     """Insert a trade into the database with optional order type and parent order tracking."""
     timestamp = int(time.time() * 1000)
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO trades (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                   (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id))
+
+    # Ensure numeric fields have default values instead of NULL
+    realized_pnl = realized_pnl if realized_pnl is not None else 0
+    commission = commission if commission is not None else 0
+    filled_qty = filled_qty if filled_qty is not None else 0
+    avg_price = avg_price if avg_price is not None else price  # Use order price as default
+
+    cursor.execute('''INSERT INTO trades (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id,
+                      exchange_trade_id, realized_pnl, commission, filled_qty, avg_price)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id,
+                    exchange_trade_id, realized_pnl, commission, filled_qty, avg_price))
     conn.commit()
     return cursor.lastrowid
 
