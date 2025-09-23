@@ -98,9 +98,9 @@ class ColoredFormatter(logging.Formatter):
         self.formats = {
             'DEBUG': f"{COLOR_SCHEME['DEBUG']}%(asctime)s - DEBUG - %(message)s{Style.RESET_ALL}",
             'INFO': f"%(asctime)s - {COLOR_SCHEME['INFO']}INFO{Style.RESET_ALL} - %(message)s",
-            'WARNING': f"%(asctime)s - {COLOR_SCHEME['WARNING']}{SYMBOLS['WARNING']} WARNING{Style.RESET_ALL} - {COLOR_SCHEME['WARNING']}%(message)s{Style.RESET_ALL}",
-            'ERROR': f"%(asctime)s - {COLOR_SCHEME['ERROR']}{SYMBOLS['ERROR']} ERROR{Style.RESET_ALL} - {COLOR_SCHEME['ERROR']}%(message)s{Style.RESET_ALL}",
-            'CRITICAL': f"{COLOR_SCHEME['CRITICAL']}%(asctime)s - ⚠ CRITICAL - %(message)s{Style.RESET_ALL}",
+            'WARNING': f"%(asctime)s - {COLOR_SCHEME['WARNING']}WARNING{Style.RESET_ALL} - {COLOR_SCHEME['WARNING']}%(message)s{Style.RESET_ALL}",
+            'ERROR': f"%(asctime)s - {COLOR_SCHEME['ERROR']}ERROR{Style.RESET_ALL} - {COLOR_SCHEME['ERROR']}%(message)s{Style.RESET_ALL}",
+            'CRITICAL': f"{COLOR_SCHEME['CRITICAL']}%(asctime)s - CRITICAL - %(message)s{Style.RESET_ALL}",
         }
 
     def format(self, record):
@@ -203,7 +203,10 @@ class ColoredLogger:
     def trade_placed(self, symbol, side, qty, price):
         """Log a trade placement."""
         message = f"Order placed: {symbol} {side} {qty} @ {price}"
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"[TRADE] {message}")
+        elif COLORS_AVAILABLE:
             self.logger.info(
                 f"{COLOR_SCHEME['TRADE_PLACED']}{SYMBOLS['TRADE']} {message}{Style.RESET_ALL}"
             )
@@ -214,14 +217,14 @@ class ColoredLogger:
         """Log a trade fill."""
         message = f"Order filled: {symbol} {side} {qty} @ {price}"
         if pnl is not None:
-            color = COLOR_SCHEME['TRADE_PROFIT'] if pnl >= 0 else COLOR_SCHEME['TRADE_LOSS']
-            symbol = SYMBOLS['PROFIT'] if pnl >= 0 else SYMBOLS['LOSS']
             message += f" | PNL: {pnl:+.2f}"
-        else:
-            color = COLOR_SCHEME['TRADE_FILLED']
-            symbol = SYMBOLS['SUCCESS']
 
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"[FILLED] {message}")
+        elif COLORS_AVAILABLE:
+            color = COLOR_SCHEME['TRADE_PROFIT'] if pnl and pnl >= 0 else COLOR_SCHEME['TRADE_LOSS'] if pnl and pnl < 0 else COLOR_SCHEME['TRADE_FILLED']
+            symbol = SYMBOLS['PROFIT'] if pnl and pnl >= 0 else SYMBOLS['LOSS'] if pnl and pnl < 0 else SYMBOLS['SUCCESS']
             self.logger.info(f"{color}{symbol} {message}{Style.RESET_ALL}")
         else:
             self.logger.info(f"[FILLED] {message}")
@@ -267,7 +270,10 @@ class ColoredLogger:
     def threshold_met(self, symbol, volume, threshold):
         """Log when volume threshold is met."""
         message = f"Volume threshold met for {symbol}: ${volume:.2f} > ${threshold:.2f}"
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"[THRESHOLD MET] {message}")
+        elif COLORS_AVAILABLE:
             self.logger.info(
                 f"{COLOR_SCHEME['THRESHOLD_MET']}{SYMBOLS['SUCCESS']} {message}{Style.RESET_ALL}"
             )
@@ -300,20 +306,28 @@ class ColoredLogger:
 
     def position_update(self, symbol, side, qty, entry_price, current_pnl):
         """Log position updates with PNL coloring."""
-        arrow = SYMBOLS['ARROW_UP'] if current_pnl > 0 else SYMBOLS['ARROW_DOWN'] if current_pnl < 0 else SYMBOLS['ARROW_RIGHT']
-        color = COLOR_SCHEME['POSITION_PROFIT'] if current_pnl > 0 else COLOR_SCHEME['POSITION_LOSS'] if current_pnl < 0 else Fore.YELLOW
-
-        message = f"{symbol} {side}: {qty} @ {entry_price:.4f} | PNL: {current_pnl:+.2f}%"
-
-        if COLORS_AVAILABLE:
-            self.logger.info(f"{color}{arrow} {message}{Style.RESET_ALL}")
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            status = "[PROFIT]" if current_pnl > 0 else "[LOSS]" if current_pnl < 0 else "[FLAT]"
+            message = f"{symbol} {side}: {qty} @ {entry_price:.4f} | PNL: {current_pnl:+.2f}%"
+            self.logger.info(f"{status} {message}")
         else:
-            status = "PROFIT" if current_pnl > 0 else "LOSS" if current_pnl < 0 else "FLAT"
-            self.logger.info(f"[{status}] {message}")
+            arrow = SYMBOLS['ARROW_UP'] if current_pnl > 0 else SYMBOLS['ARROW_DOWN'] if current_pnl < 0 else SYMBOLS['ARROW_RIGHT']
+            color = COLOR_SCHEME['POSITION_PROFIT'] if current_pnl > 0 else COLOR_SCHEME['POSITION_LOSS'] if current_pnl < 0 else Fore.YELLOW
+            message = f"{symbol} {side}: {qty} @ {entry_price:.4f} | PNL: {current_pnl:+.2f}%"
+
+            if COLORS_AVAILABLE:
+                self.logger.info(f"{color}{arrow} {message}{Style.RESET_ALL}")
+            else:
+                status = "PROFIT" if current_pnl > 0 else "LOSS" if current_pnl < 0 else "FLAT"
+                self.logger.info(f"[{status}] {message}")
 
     def startup(self, message):
         """Log startup messages."""
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"\n{'='*50}\n{message}\n{'='*50}")
+        elif COLORS_AVAILABLE:
             self.logger.info(
                 f"{COLOR_SCHEME['STARTUP']}{'='*50}{Style.RESET_ALL}\n"
                 f"{COLOR_SCHEME['STARTUP']}{SYMBOLS['INFO']} {message}{Style.RESET_ALL}\n"
