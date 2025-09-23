@@ -199,7 +199,7 @@ class PositionManager:
                 # Update existing tranche by averaging entry
                 existing = tranches[tranche_id]
                 total_qty = existing.quantity + quantity
-                weighted_entry = (existing.quantity * existing.entry_price + quantity * price) / total_qty
+                weighted_entry = (existing.quantity * existing.entry_price + quantity * price) / total_qty if total_qty > 0 else price
 
                 existing.quantity = total_qty
                 existing.entry_price = weighted_entry
@@ -209,6 +209,10 @@ class PositionManager:
                 existing.last_updated = time.time()
 
                 logger.info(f"Updated tranche {tranche_id} for {key}: qty={total_qty}, entry={weighted_entry:.6f}, PnL={existing.unrealized_pnl:.2f}")
+
+                # Persist to database if quantity > 0
+                if quantity > 0:
+                    self._persist_tranche_to_db(symbol, side, tranche_id, weighted_entry, total_qty, leverage)
             else:
                 # New tranche
                 position_value = quantity * price
@@ -222,11 +226,35 @@ class PositionManager:
                     leverage=leverage,
                     margin_used=position_value / leverage if leverage > 0 else position_value
                 )
-                position.unrealized_pnl = (price - price) * quantity if side == 'LONG' else (price - price) * quantity  # 0 initially
+                position.unrealized_pnl = 0  # 0 initially
                 tranches[tranche_id] = position
                 logger.info(f"Created new tranche {tranche_id} for {key}: {quantity}@{price}")
 
+                # Persist to database if quantity > 0
+                if quantity > 0:
+                    self._persist_tranche_to_db(symbol, side, tranche_id, price, quantity, leverage)
+
             return key, tranche_id
+
+    def _persist_tranche_to_db(self, symbol: str, side: str, tranche_id: int, entry_price: float, quantity: float, leverage: int):
+        """Persist tranche to database."""
+        try:
+            from src.database.db import get_db_conn, insert_tranche, update_tranche
+
+            conn = get_db_conn()
+            try:
+                # Try update first, then insert if not exists
+                rows_updated = update_tranche(conn, tranche_id, quantity=quantity, avg_price=entry_price)
+                if rows_updated == 0:
+                    # Tranche doesn't exist, insert it
+                    insert_tranche(conn, symbol, side, tranche_id, entry_price, quantity, leverage)
+                    logger.debug(f"Inserted tranche {tranche_id} to database")
+                else:
+                    logger.debug(f"Updated tranche {tranche_id} in database")
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error persisting tranche to database: {e}")
 
     def merge_least_lossy_tranches(self, key: str) -> None:
         """

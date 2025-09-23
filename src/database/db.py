@@ -181,7 +181,7 @@ def get_usdt_volume_in_window(conn, symbol, window_sec):
     return result or 0.0
 
 def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None, order_type=None, parent_order_id=None,
-                 exchange_trade_id=None, realized_pnl=0, commission=0, filled_qty=0, avg_price=0):
+                 exchange_trade_id=None, realized_pnl=0, commission=0, filled_qty=0, avg_price=0, tranche_id=0):
     """Insert a trade into the database with optional order type and parent order tracking."""
     timestamp = int(time.time() * 1000)
     cursor = conn.cursor()
@@ -191,12 +191,13 @@ def insert_trade(conn, symbol, order_id, side, qty, price, status, response=None
     commission = commission if commission is not None else 0
     filled_qty = filled_qty if filled_qty is not None else 0
     avg_price = avg_price if avg_price is not None else price  # Use order price as default
+    tranche_id = tranche_id if tranche_id is not None else 0
 
     cursor.execute('''INSERT INTO trades (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id,
-                      exchange_trade_id, realized_pnl, commission, filled_qty, avg_price)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      exchange_trade_id, realized_pnl, commission, filled_qty, avg_price, tranche_id)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                    (timestamp, symbol, order_id, side, qty, price, status, response, order_type, parent_order_id,
-                    exchange_trade_id, realized_pnl, commission, filled_qty, avg_price))
+                    exchange_trade_id, realized_pnl, commission, filled_qty, avg_price, tranche_id))
     conn.commit()
     return cursor.lastrowid
 
@@ -253,7 +254,7 @@ def update_trade_on_fill(conn, order_id, trade_id, status, filled_qty, avg_price
 
     return cursor.rowcount
 
-def insert_order_relationship(conn, main_order_id, symbol, position_side='BOTH', tp_order_id=None, sl_order_id=None):
+def insert_order_relationship(conn, main_order_id, symbol, position_side='BOTH', tp_order_id=None, sl_order_id=None, tranche_id=0):
     """Insert or update order relationship tracking."""
     timestamp = int(time.time() * 1000)
     cursor = conn.cursor()
@@ -264,18 +265,27 @@ def insert_order_relationship(conn, main_order_id, symbol, position_side='BOTH',
 
     if existing:
         # Update existing relationship
+        updates = []
+        params = []
         if tp_order_id:
-            cursor.execute('UPDATE order_relationships SET tp_order_id = ? WHERE main_order_id = ?',
-                          (tp_order_id, main_order_id))
+            updates.append('tp_order_id = ?')
+            params.append(tp_order_id)
         if sl_order_id:
-            cursor.execute('UPDATE order_relationships SET sl_order_id = ? WHERE main_order_id = ?',
-                          (sl_order_id, main_order_id))
+            updates.append('sl_order_id = ?')
+            params.append(sl_order_id)
+        if tranche_id is not None:
+            updates.append('tranche_id = ?')
+            params.append(tranche_id)
+
+        if updates:
+            params.append(main_order_id)
+            cursor.execute(f'UPDATE order_relationships SET {", ".join(updates)} WHERE main_order_id = ?', params)
     else:
         # Insert new relationship
         cursor.execute('''INSERT INTO order_relationships
-                         (main_order_id, tp_order_id, sl_order_id, symbol, position_side, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?)''',
-                      (main_order_id, tp_order_id, sl_order_id, symbol, position_side, timestamp))
+                         (main_order_id, tp_order_id, sl_order_id, symbol, position_side, created_at, tranche_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                      (main_order_id, tp_order_id, sl_order_id, symbol, position_side, timestamp, tranche_id))
 
     conn.commit()
     return cursor.lastrowid
@@ -456,3 +466,93 @@ def delete_position(conn, symbol):
     cursor.execute('DELETE FROM positions WHERE symbol = ?', (symbol,))
     conn.commit()
     return cursor.rowcount > 0
+
+# Tranche management functions
+def insert_tranche(conn, symbol, position_side, tranche_id, entry_price, quantity, leverage=1):
+    """Insert a new tranche into position_tranches table."""
+    cursor = conn.cursor()
+    timestamp = int(time.time())
+
+    # Calculate price bands for this tranche (5% by default)
+    tranche_increment = 0.05  # 5%
+    band_lower = entry_price * (1 - tranche_increment / 2)
+    band_upper = entry_price * (1 + tranche_increment / 2)
+
+    cursor.execute('''
+        INSERT OR REPLACE INTO position_tranches
+        (tranche_id, symbol, position_side, avg_entry_price, total_quantity,
+         price_band_lower, price_band_upper, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (tranche_id, symbol, position_side, entry_price, quantity,
+          band_lower, band_upper, timestamp, timestamp))
+
+    conn.commit()
+    return cursor.lastrowid
+
+def update_tranche(conn, tranche_id, quantity=None, avg_price=None, tp_order_id=None, sl_order_id=None):
+    """Update an existing tranche."""
+    cursor = conn.cursor()
+    timestamp = int(time.time())
+
+    updates = ['updated_at = ?']
+    params = [timestamp]
+
+    if quantity is not None:
+        updates.append('total_quantity = ?')
+        params.append(quantity)
+
+    if avg_price is not None:
+        updates.append('avg_entry_price = ?')
+        params.append(avg_price)
+
+        # Recalculate price bands
+        tranche_increment = 0.05  # 5%
+        band_lower = avg_price * (1 - tranche_increment / 2)
+        band_upper = avg_price * (1 + tranche_increment / 2)
+        updates.extend(['price_band_lower = ?', 'price_band_upper = ?'])
+        params.extend([band_lower, band_upper])
+
+    if tp_order_id is not None:
+        updates.append('tp_order_id = ?')
+        params.append(tp_order_id)
+
+    if sl_order_id is not None:
+        updates.append('sl_order_id = ?')
+        params.append(sl_order_id)
+
+    params.append(tranche_id)
+    query = f"UPDATE position_tranches SET {', '.join(updates)} WHERE tranche_id = ?"
+    cursor.execute(query, params)
+    conn.commit()
+    return cursor.rowcount
+
+def delete_tranche(conn, tranche_id):
+    """Delete a tranche."""
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM position_tranches WHERE tranche_id = ?', (tranche_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+def get_tranches(conn, symbol=None, position_side=None):
+    """Get tranches for a symbol/side or all tranches."""
+    cursor = conn.cursor()
+
+    if symbol and position_side:
+        cursor.execute('''
+            SELECT * FROM position_tranches
+            WHERE symbol = ? AND position_side = ?
+            ORDER BY tranche_id ASC
+        ''', (symbol, position_side))
+    elif symbol:
+        cursor.execute('''
+            SELECT * FROM position_tranches
+            WHERE symbol = ?
+            ORDER BY tranche_id ASC
+        ''', (symbol,))
+    else:
+        cursor.execute('''
+            SELECT * FROM position_tranches
+            ORDER BY symbol, position_side, tranche_id ASC
+        ''')
+
+    return cursor.fetchall()

@@ -4,6 +4,7 @@ from src.database.db import get_volume_in_window, get_usdt_volume_in_window, ins
 from src.utils.auth import make_authenticated_request
 from src.utils.utils import log
 from src.core.order_batcher import OrderBatcher, LiquidationBuffer
+from src.utils.position_manager import PositionManager
 import json
 import math
 import time
@@ -18,6 +19,9 @@ MIN_NOTIONAL = 5.0
 
 # Initialize order batcher for efficient API usage
 order_batcher = OrderBatcher(batch_window_ms=200, max_batch_size=5)
+
+# Initialize position manager for tranche tracking
+position_manager = None
 
 def get_opposite_side(side):
     """Get opposite side for OPPOSITE mode."""
@@ -277,6 +281,41 @@ async def validate_minimum_notionals():
 
 async def init_symbol_settings():
     """Set position mode, multi-assets mode, leverage and margin type for each symbol via API."""
+    global position_manager
+
+    # Initialize position manager with symbol limits
+    max_position_per_symbol = {}
+    for symbol, settings in config.SYMBOL_SETTINGS.items():
+        max_position_per_symbol[symbol] = settings.get('max_position_usdt', 10000.0)
+
+    max_total_exposure = config.GLOBAL_SETTINGS.get('max_total_exposure_usdt', 10000.0)
+    position_manager = PositionManager(max_position_per_symbol, max_total_exposure)
+    log.info("Position manager initialized for tranche tracking")
+
+    # Load existing positions from database
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    try:
+        # Check if position_tranches table exists and load existing tranches
+        cursor.execute('''
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='position_tranches'
+        ''')
+        if cursor.fetchone():
+            cursor.execute('''
+                SELECT symbol, position_side, avg_entry_price, total_quantity, tranche_id
+                FROM position_tranches
+                WHERE total_quantity > 0
+            ''')
+            for row in cursor.fetchall():
+                symbol, side, price, qty, tranche_id = row
+                if qty > 0:
+                    # Load existing tranches into position manager
+                    leverage = config.SYMBOL_SETTINGS.get(symbol, {}).get('leverage', 1)
+                    position_manager.add_fill_to_position(symbol, side, qty, price, leverage)
+                    log.info(f"Loaded existing tranche {tranche_id} for {symbol} {side}: {qty}@{price}")
+    finally:
+        conn.close()
 
     # Fetch exchange info first to get symbol specifications
     await fetch_exchange_info()
@@ -446,15 +485,26 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         # In one-way mode, always use BOTH
         position_side = 'BOTH'
 
-    # Check max position limit (based on margin/collateral, not notional)
-    max_position_usdt = symbol_config.get('max_position_usdt', float('inf'))
-    current_margin_used = get_current_position_value(symbol, position_side)
-    new_trade_margin = position_size_usdt / leverage  # Convert notional to margin
+    # Check position limits using PositionManager
+    if position_manager:
+        can_open, reason = position_manager.can_open_position(symbol, position_size_usdt, leverage)
+        if not can_open:
+            log.warning(f"Position manager rejected trade: {reason}")
+            conn.close()
+            return
 
-    if current_margin_used + new_trade_margin > max_position_usdt:
-        log.warning(f"Would exceed max margin for {symbol}: current margin {current_margin_used:.2f} + new {new_trade_margin:.2f} > max {max_position_usdt:.2f} USDT")
-        conn.close()
-        return
+        # Add pending exposure for this order
+        position_manager.add_pending_exposure(symbol, position_size_usdt, leverage)
+    else:
+        # Fallback to old logic if position manager not initialized
+        max_position_usdt = symbol_config.get('max_position_usdt', float('inf'))
+        current_margin_used = get_current_position_value(symbol, position_side)
+        new_trade_margin = position_size_usdt / leverage  # Convert notional to margin
+
+        if current_margin_used + new_trade_margin > max_position_usdt:
+            log.warning(f"Would exceed max margin for {symbol}: current margin {current_margin_used:.2f} + new {new_trade_margin:.2f} > max {max_position_usdt:.2f} USDT")
+            conn.close()
+            return
 
     # Calculate quantity from position size
     trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
@@ -614,15 +664,32 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                 'entry_price': entry_price  # Will be updated with actual fill price
             }
 
+        # Determine tranche for this order
+        tranche_id = 0
+        if position_manager:
+            # Pre-add to position manager to get tranche assignment
+            # This will be properly updated when order fills
+            leverage = symbol_config.get('leverage', 1) if symbol_config else 1
+            position_value = qty * entry_price
+            position_key, tranche_id = position_manager.add_fill_to_position(
+                symbol,
+                'LONG' if side == 'BUY' else 'SHORT',
+                0,  # Start with 0 quantity, will update on fill
+                entry_price,
+                leverage
+            )
+            log.info(f"Order will be assigned to tranche {tranche_id} for {position_key}")
+
         # Handle simulation mode
         if config.SIMULATE_ONLY:
             log.info(f"Simulating main order: {json.dumps(main_order, indent=2)}")
             main_order_id = f'simulated_main_{int(time.time())}'
             insert_trade(conn, symbol, main_order_id, side, qty, entry_price, 'SIMULATED',
-                        None, 'LIMIT', None, filled_qty=0, avg_price=entry_price)
+                        None, 'LIMIT', None, filled_qty=0, avg_price=entry_price, tranche_id=tranche_id)
 
             # Simulate TP/SL placement
             if tp_sl_params:
+                tp_sl_params['tranche_id'] = tranche_id
                 log.info("Would place TP/SL orders after main order fills")
                 await place_tp_sl_orders(main_order_id, entry_price, tp_sl_params)
             return main_order_id
@@ -659,15 +726,27 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
             avg_price = float(avg_price_str) if avg_price_str != '0' and avg_price_str != '0.00000' else entry_price
 
             insert_trade(conn, symbol, order_id, side, qty, entry_price, status,
-                       json.dumps(resp_data), 'LIMIT', None, filled_qty=executed_qty, avg_price=avg_price)
+                       json.dumps(resp_data), 'LIMIT', None, filled_qty=executed_qty, avg_price=avg_price, tranche_id=tranche_id)
 
             # If order is already filled (FILLED status), place TP/SL immediately
             if status == 'FILLED' and tp_sl_params:
                 tp_sl_params['entry_price'] = fill_price
+                tp_sl_params['tranche_id'] = tranche_id
                 log.info(f"Main order filled immediately, placing TP/SL orders")
                 await place_tp_sl_orders(order_id, fill_price, tp_sl_params)
+
+                # Update position manager with actual fill
+                if position_manager and executed_qty > 0:
+                    position_manager.add_fill_to_position(
+                        symbol,
+                        'LONG' if side == 'BUY' else 'SHORT',
+                        executed_qty,
+                        avg_price,
+                        symbol_config.get('leverage', 1) if symbol_config else 1
+                    )
             elif tp_sl_params:
                 # Start monitoring for fill to place TP/SL
+                tp_sl_params['tranche_id'] = tranche_id
                 log.info(f"Main order placed, will place TP/SL after fill")
                 asyncio.create_task(monitor_and_place_tp_sl(order_id, tp_sl_params))
 
@@ -675,163 +754,30 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
         else:
             log.trade_failed(symbol, f"HTTP {response.status_code}: {response.text}")
             insert_trade(conn, symbol, 'failed', side, qty, entry_price, 'FAILED',
-                       response.text, 'LIMIT', None, filled_qty=0, avg_price=entry_price)
+                       response.text, 'LIMIT', None, filled_qty=0, avg_price=entry_price, tranche_id=tranche_id)
+
+            # Remove pending exposure on failure
+            if position_manager:
+                position_manager.remove_pending_exposure(symbol, qty * entry_price,
+                    symbol_config.get('leverage', 1) if symbol_config else 1)
             return None
 
     except Exception as e:
         log.trade_failed(symbol, str(e))
         insert_trade(conn, symbol, 'error', side, qty, entry_price, 'ERROR',
-                   str(e), 'LIMIT', None, filled_qty=0, avg_price=entry_price)
+                   str(e), 'LIMIT', None, filled_qty=0, avg_price=entry_price, tranche_id=tranche_id)
+
+        # Remove pending exposure on error
+        if position_manager:
+            position_manager.remove_pending_exposure(symbol, qty * entry_price,
+                symbol_config.get('leverage', 1) if symbol_config else 1)
         return None
     finally:
         # Always close the database connection
         conn.close()
 
-async def get_tranche_for_price(symbol, position_side, entry_price):
-    """
-    Find or create a tranche for the given entry price.
-
-    Args:
-        symbol: Trading symbol
-        position_side: LONG or SHORT
-        entry_price: Entry price of the position
-
-    Returns:
-        tranche_id for the position
-    """
-    conn = get_db_conn()
-    cursor = conn.cursor()
-
-    # Get tranche increment from config (default 5%)
-    tranche_increment = config.GLOBAL_SETTINGS.get('tranche_pnl_increment_pct', 5.0) / 100.0
-
-    # Calculate price band for this entry
-    band_lower = entry_price * (1 - tranche_increment / 2)
-    band_upper = entry_price * (1 + tranche_increment / 2)
-
-    try:
-        # Check if tranche exists
-        cursor.execute('''
-            SELECT tranche_id, total_quantity, avg_entry_price
-            FROM position_tranches
-            WHERE symbol = ? AND position_side = ?
-            AND ? >= price_band_lower AND ? <= price_band_upper
-        ''', (symbol, position_side, entry_price, entry_price))
-
-        result = cursor.fetchone()
-
-        if result:
-            # Tranche exists, return it
-            tranche_id = result[0]
-            log.debug(f"Found existing tranche {tranche_id} for {symbol} {position_side} at price {entry_price}")
-            return tranche_id
-        else:
-            # Create new tranche
-            cursor.execute('''
-                INSERT INTO position_tranches
-                (symbol, position_side, avg_entry_price, total_quantity,
-                 price_band_lower, price_band_upper, created_at, updated_at)
-                VALUES (?, ?, ?, 0, ?, ?, ?, ?)
-            ''', (symbol, position_side, entry_price, band_lower, band_upper,
-                  int(time.time()), int(time.time())))
-
-            tranche_id = cursor.lastrowid
-            conn.commit()
-            log.info(f"Created new tranche {tranche_id} for {symbol} {position_side} at price band {band_lower:.2f}-{band_upper:.2f}")
-            return tranche_id
-
-    finally:
-        conn.close()
-
-async def consolidate_stop_orders(symbol, position_side, new_entry_price, new_qty):
-    """
-    Consolidate stop orders for a symbol by canceling old ones and creating combined orders.
-
-    Args:
-        symbol: Trading symbol
-        position_side: Position side (LONG/SHORT)
-        new_entry_price: Entry price of new position
-        new_qty: Quantity of new position
-
-    Returns:
-        True if consolidation successful, False otherwise
-    """
-    conn = get_db_conn()
-    cursor = conn.cursor()
-
-    try:
-        # Get tranche for this price
-        tranche_id = await get_tranche_for_price(symbol, position_side, new_entry_price)
-
-        # Get all positions in this tranche
-        cursor.execute('''
-            SELECT tp_order_id, sl_order_id, total_quantity, avg_entry_price
-            FROM position_tranches
-            WHERE tranche_id = ?
-        ''', (tranche_id,))
-
-        tranche_data = cursor.fetchone()
-
-        if tranche_data and (tranche_data[0] or tranche_data[1]):
-            old_tp_id = tranche_data[0]
-            old_sl_id = tranche_data[1]
-            old_qty = tranche_data[2]
-            old_avg_price = tranche_data[3]
-
-            # Calculate new weighted average price
-            total_qty = old_qty + new_qty
-            new_avg_price = ((old_avg_price * old_qty) + (new_entry_price * new_qty)) / total_qty
-
-            log.info(f"Consolidating orders for tranche {tranche_id}: old_qty={old_qty}, new_qty={new_qty}, new_avg_price={new_avg_price}")
-
-            # Cancel old TP/SL orders if they exist
-            from src.core.order_cleanup import OrderCleanup
-            cleanup = OrderCleanup(conn)
-
-            if old_tp_id:
-                await cleanup.cancel_order(symbol, old_tp_id)
-            if old_sl_id:
-                await cleanup.cancel_order(symbol, old_sl_id)
-
-            # Update tranche with new consolidated position
-            cursor.execute('''
-                UPDATE position_tranches
-                SET total_quantity = ?, avg_entry_price = ?, updated_at = ?
-                WHERE tranche_id = ?
-            ''', (total_qty, new_avg_price, int(time.time()), tranche_id))
-
-            conn.commit()
-
-            # Return the consolidated data to place new orders
-            return {
-                'tranche_id': tranche_id,
-                'total_qty': total_qty,
-                'avg_price': new_avg_price,
-                'consolidated': True
-            }
-        else:
-            # No existing orders to consolidate, just update tranche quantity
-            cursor.execute('''
-                UPDATE position_tranches
-                SET total_quantity = total_quantity + ?,
-                    avg_entry_price = ((avg_entry_price * total_quantity) + (? * ?)) / (total_quantity + ?),
-                    updated_at = ?
-                WHERE tranche_id = ?
-            ''', (new_qty, new_entry_price, new_qty, new_qty, int(time.time()), tranche_id))
-
-            conn.commit()
-            return {
-                'tranche_id': tranche_id,
-                'total_qty': new_qty,
-                'avg_price': new_entry_price,
-                'consolidated': False
-            }
-
-    except Exception as e:
-        log.error(f"Error consolidating stop orders: {e}")
-        return None
-    finally:
-        conn.close()
+# Removed get_tranche_for_price and consolidate_stop_orders functions
+# These are now handled by PositionManager
 
 async def monitor_and_place_tp_sl(order_id, tp_sl_params):
     """Monitor main order status and place TP/SL when filled."""
@@ -857,12 +803,38 @@ async def monitor_and_place_tp_sl(order_id, tp_sl_params):
 
                 if status == 'FILLED':
                     fill_price = float(order_data.get('avgPrice', tp_sl_params['entry_price']))
+                    filled_qty = float(order_data.get('executedQty', tp_sl_params['qty']))
                     tp_sl_params['entry_price'] = fill_price
+
+                    # Update position manager with fill
+                    if position_manager and filled_qty > 0:
+                        symbol = tp_sl_params['symbol']
+                        side = tp_sl_params['entry_side']
+                        leverage = tp_sl_params.get('symbol_config', {}).get('leverage', 1)
+                        position_manager.add_fill_to_position(
+                            symbol,
+                            'LONG' if side == 'BUY' else 'SHORT',
+                            filled_qty,
+                            fill_price,
+                            leverage
+                        )
+                        position_manager.remove_pending_exposure(symbol, filled_qty * fill_price, leverage)
+                        log.info(f"Updated position manager with fill: {filled_qty}@{fill_price}")
+
                     log.info(f"Main order {order_id} filled at {fill_price}, placing TP/SL")
                     await place_tp_sl_orders(order_id, fill_price, tp_sl_params)
                     return
                 elif status in ['CANCELED', 'REJECTED', 'EXPIRED']:
                     log.info(f"Main order {order_id} {status}, not placing TP/SL")
+
+                    # Remove pending exposure on cancel
+                    if position_manager:
+                        symbol = tp_sl_params['symbol']
+                        qty = tp_sl_params['qty']
+                        price = tp_sl_params['entry_price']
+                        leverage = tp_sl_params.get('symbol_config', {}).get('leverage', 1)
+                        position_manager.remove_pending_exposure(symbol, qty * price, leverage)
+
                     return
 
             await asyncio.sleep(check_interval)
@@ -920,22 +892,8 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
 
     if stop_order_count >= max_stop_orders:
         log.warning(f"Cannot place TP/SL for {symbol} {position_side}: already have {stop_order_count} stop orders (max: {max_stop_orders})")
-        log.info(f"Consider consolidating positions or waiting for orders to clear")
-
-        # Try to consolidate orders if enabled
-        if config.GLOBAL_SETTINGS.get('enable_order_consolidation', True):
-            log.info(f"Attempting to consolidate stop orders for {symbol}")
-            consolidation_result = await consolidate_stop_orders(symbol, position_side, fill_price, qty)
-            if consolidation_result and consolidation_result['consolidated']:
-                # Use consolidated values for TP/SL
-                fill_price = consolidation_result['avg_price']
-                qty = consolidation_result['total_qty']
-                log.info(f"Using consolidated position: qty={qty}, avg_price={fill_price}")
-            elif not consolidation_result:
-                log.error(f"Failed to consolidate orders for {symbol}")
-                return
-        else:
-            return
+        log.info(f"Consider waiting for orders to clear or reducing position size")
+        return
     elif stop_order_count >= max_stop_orders - 2:
         log.warning(f"Approaching stop order limit for {symbol}: {stop_order_count} orders active")
 
@@ -1009,7 +967,8 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                 order_id = f'simulated_{order_type}_{int(time.time())}'
                 log.info(f"Simulating {order_type} order: {json.dumps(order, indent=2)}")
                 insert_trade(conn, symbol, order_id, order['side'], qty, order_price, 'SIMULATED',
-                            None, order_type, main_order_id, filled_qty=0, avg_price=order_price)
+                            None, order_type, main_order_id, filled_qty=0, avg_price=order_price,
+                            tranche_id=tp_sl_params.get('tranche_id', 0))
         else:
             # Track which order IDs are for TP and SL
             tp_order_id = None
@@ -1036,7 +995,8 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                             insert_trade(conn, symbol, order_id, tp_sl_orders[i]['side'], qty,
                                        price_field,
                                        result.get('status', 'NEW'), json.dumps(result),
-                                       order_type, main_order_id, filled_qty=executed_qty, avg_price=avg_price)
+                                       order_type, main_order_id, filled_qty=executed_qty, avg_price=avg_price,
+                                       tranche_id=tp_sl_params.get('tranche_id', 0))
 
                             # Track TP/SL order IDs
                             if 'TAKE_PROFIT' in order_type:
@@ -1065,7 +1025,8 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                         insert_trade(conn, symbol, order_id, order['side'], qty,
                                    price_field,
                                    resp_data.get('status', 'NEW'), json.dumps(resp_data),
-                                   order_type, main_order_id, filled_qty=executed_qty, avg_price=avg_price)
+                                   order_type, main_order_id, filled_qty=executed_qty, avg_price=avg_price,
+                                   tranche_id=tp_sl_params.get('tranche_id', 0))
 
                         # Track TP/SL order IDs
                         if 'TAKE_PROFIT' in order_type:
@@ -1077,21 +1038,10 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
 
             # Store order relationships in database
             if tp_order_id or sl_order_id:
-                # Get tranche ID if we consolidated
-                tranche_id = 0
-                if 'consolidation_result' in locals() and consolidation_result:
-                    tranche_id = consolidation_result.get('tranche_id', 0)
+                # Get tranche ID from params
+                tranche_id = tp_sl_params.get('tranche_id', 0)
 
-                    # Update tranche with new TP/SL order IDs
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        UPDATE position_tranches
-                        SET tp_order_id = ?, sl_order_id = ?, updated_at = ?
-                        WHERE tranche_id = ?
-                    ''', (tp_order_id, sl_order_id, int(time.time()), tranche_id))
-                    conn.commit()
-
-                insert_order_relationship(conn, main_order_id, symbol, position_side, tp_order_id, sl_order_id)
+                insert_order_relationship(conn, main_order_id, symbol, position_side, tp_order_id, sl_order_id, tranche_id)
                 log.info(f"Stored order relationship: main={main_order_id}, tp={tp_order_id}, sl={sl_order_id}, tranche={tranche_id}")
 
                 # Verify orders were placed successfully

@@ -1259,6 +1259,11 @@ class Dashboard {
             const response = await axios.get(`/api/positions/${symbol}/${side}`);
             const position = response.data;
 
+            // Debug logging
+            console.log('Position details response:', position);
+            console.log('Tranches:', position.tranches);
+            console.log('Order relationships:', position.order_relationships?.length);
+
             const modal = document.getElementById('position-modal');
             const modalBody = document.getElementById('position-modal-body');
 
@@ -1292,10 +1297,66 @@ class Dashboard {
                     </div>
             `;
 
-            // Add order relationships or tranches breakdown
-            if (position.order_relationships && position.order_relationships.length > 0) {
+            // Prioritize showing actual tranches over order relationships
+            if (position.tranches && position.tranches.length > 0) {
                 html += `
-                    <h4>Order Groups (Tranches)</h4>
+                    <h4>Tranches Breakdown</h4>
+                    <div class="table-container">
+                        <table class="tranches-table">
+                            <thead>
+                                <tr>
+                                    <th>Tranche ID</th>
+                                    <th>Entry Price</th>
+                                    <th>Quantity</th>
+                                    <th>PNL</th>
+                                    <th>TP Order</th>
+                                    <th>SL Order</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                position.tranches.forEach(tranche => {
+                    const tpStatus = position.order_statuses && tranche.tp_order_id ? position.order_statuses[tranche.tp_order_id] : null;
+                    const slStatus = position.order_statuses && tranche.sl_order_id ? position.order_statuses[tranche.sl_order_id] : null;
+                    const pnl = tranche.unrealized_pnl || 0;
+                    const pnlClass = pnl >= 0 ? 'profit' : 'loss';
+
+                    html += `
+                        <tr>
+                            <td>${tranche.tranche_id || 0}</td>
+                            <td>$${parseFloat(tranche.avg_entry_price || 0).toFixed(4)}</td>
+                            <td>${parseFloat(tranche.total_quantity || 0).toFixed(4)}</td>
+                            <td class="${pnlClass}">$${pnl.toFixed(2)}</td>
+                            <td>
+                                ${tranche.tp_order_id ? `
+                                    <span class="order-status ${tpStatus?.status?.toLowerCase() || 'pending'}">
+                                        ${tpStatus?.status || 'PENDING'}
+                                    </span>
+                                ` : 'None'}
+                            </td>
+                            <td>
+                                ${tranche.sl_order_id ? `
+                                    <span class="order-status ${slStatus?.status?.toLowerCase() || 'pending'}">
+                                        ${slStatus?.status || 'PENDING'}
+                                    </span>
+                                ` : 'None'}
+                            </td>
+                            <td>${tranche.created_at ? this.formatTime(tranche.created_at) : 'N/A'}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (position.order_relationships && position.order_relationships.length > 0) {
+                // Fallback to order relationships if no tranches
+                html += `
+                    <h4>Order Groups</h4>
                     <div class="table-container">
                         <table class="tranches-table">
                             <thead>
@@ -1343,58 +1404,6 @@ class Dashboard {
                                 ` : 'None'}
                             </td>
                             <td>${rel.created_at ? this.formatTime(rel.created_at) : 'N/A'}</td>
-                        </tr>
-                    `;
-                });
-
-                html += `
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            } else if (position.tranches && position.tranches.length > 0) {
-                // Fallback to tranches if they exist
-                html += `
-                    <h4>Tranches Breakdown</h4>
-                    <div class="table-container">
-                        <table class="tranches-table">
-                            <thead>
-                                <tr>
-                                    <th>Tranche ID</th>
-                                    <th>Entry Price</th>
-                                    <th>Quantity</th>
-                                    <th>TP Order</th>
-                                    <th>SL Order</th>
-                                    <th>Created</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                `;
-
-                position.tranches.forEach(tranche => {
-                    const tpStatus = position.order_statuses && tranche.tp_order_id ? position.order_statuses[tranche.tp_order_id] : null;
-                    const slStatus = position.order_statuses && tranche.sl_order_id ? position.order_statuses[tranche.sl_order_id] : null;
-
-                    html += `
-                        <tr>
-                            <td>${tranche.tranche_id || 0}</td>
-                            <td>$${parseFloat(tranche.avg_entry_price || 0).toFixed(4)}</td>
-                            <td>${parseFloat(tranche.total_quantity || 0).toFixed(4)}</td>
-                            <td>
-                                ${tranche.tp_order_id ? `
-                                    <span class="order-status ${tpStatus?.status?.toLowerCase() || 'pending'}">
-                                        ${tpStatus?.status || 'PENDING'}
-                                    </span>
-                                ` : 'None'}
-                            </td>
-                            <td>
-                                ${tranche.sl_order_id ? `
-                                    <span class="order-status ${slStatus?.status?.toLowerCase() || 'pending'}">
-                                        ${slStatus?.status || 'PENDING'}
-                                    </span>
-                                ` : 'None'}
-                            </td>
-                            <td>${tranche.created_at ? this.formatTime(tranche.created_at) : 'N/A'}</td>
                         </tr>
                     `;
                 });

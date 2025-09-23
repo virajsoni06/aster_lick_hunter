@@ -584,6 +584,17 @@ body {
     border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
+/* Tranche PNL colors */
+.tranches-table td.profit {
+    color: var(--accent-success);
+    font-weight: 600;
+}
+
+.tranches-table td.loss {
+    color: var(--accent-danger);
+    font-weight: 600;
+}
+
 /* Tables */
 .table-container {
     width: 100%;

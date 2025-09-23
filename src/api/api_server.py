@@ -774,13 +774,62 @@ def get_position_details(symbol, side):
     ''')
 
     if cursor.fetchone():
-        # Get all tranches for this position
+        # Get all tranches for this position with calculated PNL
         cursor = conn.execute('''
-            SELECT * FROM position_tranches
-            WHERE symbol = ? AND position_side = ?
-            ORDER BY tranche_id ASC
+            SELECT pt.*,
+                   COALESCE(MAX(t.filled_qty), 0) as filled_qty,
+                   COALESCE(MAX(t.avg_price), pt.avg_entry_price) as actual_entry_price
+            FROM position_tranches pt
+            LEFT JOIN trades t ON t.tranche_id = pt.tranche_id
+                              AND t.order_type = 'LIMIT'
+                              AND t.parent_order_id IS NULL
+            WHERE pt.symbol = ? AND pt.position_side = ?
+            GROUP BY pt.tranche_id
+            ORDER BY pt.tranche_id ASC
         ''', (symbol, side))
-        tranches = [dict(row) for row in cursor.fetchall()]
+
+        # Get current market price from exchange for accurate PNL
+        current_price = None
+        try:
+            import requests
+            ticker_response = requests.get(f'https://fapi.asterdex.com/fapi/v1/ticker/price?symbol={symbol}')
+            if ticker_response.status_code == 200:
+                current_price = float(ticker_response.json()['price'])
+        except Exception as e:
+            print(f"Error fetching current price: {e}")
+
+        tranches = []
+        for row in cursor.fetchall():
+            tranche_dict = dict(row)
+            # Calculate unrealized PNL if we have a current price
+            if 'total_quantity' in tranche_dict and tranche_dict['total_quantity'] > 0:
+                qty = tranche_dict['total_quantity']
+                entry_price = tranche_dict['avg_entry_price']
+
+                # Use exchange price if available, otherwise try to get from recent trades
+                if current_price:
+                    price_to_use = current_price
+                else:
+                    # Fallback to latest trade price
+                    cursor2 = conn.execute('''
+                        SELECT price FROM trades
+                        WHERE symbol = ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ''', (symbol,))
+                    price_row = cursor2.fetchone()
+                    price_to_use = price_row[0] if price_row else entry_price
+
+                if side == 'LONG':
+                    tranche_dict['unrealized_pnl'] = (price_to_use - entry_price) * qty
+                else:  # SHORT
+                    tranche_dict['unrealized_pnl'] = (entry_price - price_to_use) * qty
+
+                tranche_dict['current_price'] = price_to_use
+            else:
+                tranche_dict['unrealized_pnl'] = 0.0
+
+            tranches.append(tranche_dict)
     else:
         tranches = []
 
@@ -843,24 +892,32 @@ def get_position_details(symbol, side):
         for row in cursor.fetchall():
             order_statuses[row['order_id']] = dict(row)
 
-    # Get current position from exchange if available
-    cursor = conn.execute('''
-        SELECT * FROM positions
-        WHERE symbol = ? AND side = ?
-        ORDER BY tranche_id ASC
-    ''', (symbol, side))
+    # Calculate aggregate position data from tranches only
+    current_positions = []  # No positions table anymore, use tranches only
 
-    current_positions = [dict(row) for row in cursor.fetchall()]
+    if tranches:
+        total_quantity = sum(t['total_quantity'] for t in tranches)
+        if total_quantity > 0:
+            avg_entry_price = sum(t['avg_entry_price'] * t['total_quantity'] for t in tranches) / total_quantity
+        else:
+            avg_entry_price = 0
+        total_unrealized_pnl = sum(t.get('unrealized_pnl', 0) for t in tranches)
 
-    # Calculate aggregate position data
-    total_quantity = sum(p['quantity'] for p in current_positions)
-    if total_quantity > 0:
-        avg_entry_price = sum(p['entry_price'] * p['quantity'] for p in current_positions) / total_quantity
+        # Calculate total margin based on leverage from config
+        leverage = 10  # Default, should get from config
+        try:
+            from src.utils.config import config
+            if symbol in config.SYMBOL_SETTINGS:
+                leverage = config.SYMBOL_SETTINGS[symbol].get('leverage', 10)
+        except:
+            pass
+        total_margin = (total_quantity * avg_entry_price) / leverage if leverage > 0 else 0
     else:
+        # No tranches, no position
+        total_quantity = 0
         avg_entry_price = 0
-
-    total_unrealized_pnl = sum(p.get('unrealized_pnl', 0) for p in current_positions)
-    total_margin = sum(p.get('margin_used', 0) for p in current_positions)
+        total_unrealized_pnl = 0
+        total_margin = 0
 
     conn.close()
 
