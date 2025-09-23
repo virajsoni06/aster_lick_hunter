@@ -28,62 +28,62 @@ except ImportError:
     class Style:
         DIM = NORMAL = BRIGHT = RESET_ALL = ''
 
-# Color scheme for different log levels and events
+# Color scheme for different log levels and events - Enhanced for readability
 COLOR_SCHEME = {
-    'DEBUG': Fore.CYAN + Style.DIM,
-    'INFO': Fore.WHITE,
+    'DEBUG': Fore.CYAN + Style.DIM + Style.BRIGHT,
+    'INFO': Fore.WHITE + Style.BRIGHT,
     'SUCCESS': Fore.GREEN + Style.BRIGHT,
-    'WARNING': Fore.YELLOW,
-    'ERROR': Fore.RED,
+    'WARNING': Fore.YELLOW + Style.BRIGHT,
+    'ERROR': Fore.RED + Style.BRIGHT,
     'CRITICAL': Fore.RED + Style.BRIGHT + Back.YELLOW,
 
     # Trading events
-    'TRADE_PLACED': Fore.GREEN,
-    'TRADE_FILLED': Fore.GREEN + Style.BRIGHT,
-    'TRADE_CANCELLED': Fore.YELLOW,
-    'TRADE_FAILED': Fore.RED,
-    'TRADE_PROFIT': Fore.GREEN + Style.BRIGHT,
-    'TRADE_LOSS': Fore.RED,
+    'TRADE_PLACED': Fore.GREEN + Style.BRIGHT,
+    'TRADE_FILLED': Fore.GREEN + Style.BRIGHT + Back.BLACK,
+    'TRADE_CANCELLED': Fore.YELLOW + Style.BRIGHT,
+    'TRADE_FAILED': Fore.RED + Style.BRIGHT + Back.WHITE,
+    'TRADE_PROFIT': Fore.GREEN + Style.BRIGHT + Back.BLACK,
+    'TRADE_LOSS': Fore.RED + Style.BRIGHT,
 
     # Liquidation events
-    'LIQUIDATION': Fore.YELLOW,
-    'LIQUIDATION_BIG': Fore.YELLOW + Style.BRIGHT,
-    'THRESHOLD_MET': Fore.GREEN + Style.BRIGHT,
+    'LIQUIDATION': Fore.YELLOW + Style.BRIGHT,
+    'LIQUIDATION_BIG': Fore.RED + Style.BRIGHT + Back.YELLOW,
+    'THRESHOLD_MET': Fore.GREEN + Style.BRIGHT + Back.BLACK,
 
     # Tranche events
     'TRANCHE_NEW': Fore.MAGENTA + Style.BRIGHT,
-    'TRANCHE_ADD': Fore.MAGENTA,
-    'TRANCHE_MERGE': Fore.CYAN,
-    'TRANCHE_CLOSE': Fore.BLUE,
+    'TRANCHE_ADD': Fore.MAGENTA + Style.BRIGHT,
+    'TRANCHE_MERGE': Fore.CYAN + Style.BRIGHT + Back.BLACK,
+    'TRANCHE_CLOSE': Fore.BLUE + Style.BRIGHT,
 
     # Position events
-    'POSITION_OPEN': Fore.GREEN,
-    'POSITION_CLOSE': Fore.BLUE,
-    'POSITION_PROFIT': Fore.GREEN + Style.BRIGHT,
-    'POSITION_LOSS': Fore.RED,
+    'POSITION_OPEN': Fore.GREEN + Style.BRIGHT,
+    'POSITION_CLOSE': Fore.BLUE + Style.BRIGHT + Back.BLACK,
+    'POSITION_PROFIT': Fore.GREEN + Style.BRIGHT + Back.BLACK,
+    'POSITION_LOSS': Fore.RED + Style.BRIGHT,
 
     # System events
-    'STARTUP': Fore.CYAN + Style.BRIGHT,
-    'SHUTDOWN': Fore.YELLOW + Style.BRIGHT,
-    'CONNECTION': Fore.BLUE,
-    'DISCONNECTION': Fore.YELLOW,
+    'STARTUP': Fore.CYAN + Style.BRIGHT + Back.BLUE,
+    'SHUTDOWN': Fore.YELLOW + Style.BRIGHT + Back.RED,
+    'CONNECTION': Fore.BLUE + Style.BRIGHT,
+    'DISCONNECTION': Fore.YELLOW + Style.BRIGHT,
 }
 
-# Symbols for different events (ASCII-safe for Windows compatibility)
+# Enhanced symbols for better visual distinction (ASCII-safe)
 SYMBOLS = {
-    'SUCCESS': '[+]',
-    'ERROR': '[X]',
-    'WARNING': '[!]',
-    'INFO': '[i]',
+    'SUCCESS': '[✓]',
+    'ERROR': '[✗]',
+    'WARNING': '[⚠]',
+    'INFO': '[ℹ]',
     'TRADE': '[$]',
-    'LOSS': '[-]',
-    'PROFIT': '[+]',
-    'LIQUIDATION': '[L]',
-    'TRANCHE': '[T]',
-    'ARROW_UP': '^',
-    'ARROW_DOWN': 'v',
-    'ARROW_RIGHT': '>',
-    'DOT': '*',
+    'LOSS': '[↓]',
+    'PROFIT': '[↑]',
+    'LIQUIDATION': '[💥]',
+    'TRANCHE': '[📦]',
+    'ARROW_UP': '↑',
+    'ARROW_DOWN': '↓',
+    'ARROW_RIGHT': '→',
+    'DOT': '•',
 }
 
 
