@@ -136,6 +136,8 @@ class Dashboard {
                 this.loadConfig(),
                 this.loadPNLData()  // Now this can use wallet balance
             ]);
+
+            // Tables now handle their own layout
         } catch (error) {
             console.error('Error loading data:', error);
             this.showToast('Error loading data', 'error');
@@ -1448,6 +1450,8 @@ class Dashboard {
             element.textContent = `Last updated: ${timeString}`;
         }
     }
+
+    // Removed syncColumnWidths - tables now use CSS for proper layout
 }
 
 // Initialize dashboard when DOM is ready
