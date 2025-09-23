@@ -380,9 +380,183 @@ class Dashboard {
                     this.loadSymbolConfig(selector.options[0].value);
                 }
             }
+
+            // Validate minimum notionals after loading config
+            await this.validateMinimumNotionals();
         } catch (error) {
             console.error('Error loading config:', error);
             this.showToast('Error loading configuration', 'error');
+        }
+    }
+
+    async validateMinimumNotionals() {
+        try {
+            // Fetch exchange symbols with minimum notionals
+            const response = await axios.get('/api/exchange/symbols');
+            const symbolData = response.data.symbols;
+
+            // Create a map of symbol to minimum notional
+            const minNotionals = {};
+            symbolData.forEach(sym => {
+                minNotionals[sym.symbol] = sym.minNotional || 5.0;
+            });
+
+            // Check each configured symbol
+            const belowMinimum = [];
+
+            if (this.currentConfig.symbols) {
+                Object.keys(this.currentConfig.symbols).forEach(symbol => {
+                    const config = this.currentConfig.symbols[symbol];
+                    const leverage = config.leverage || 10;
+                    const tradeValueUsdt = config.trade_value_usdt || 10;
+                    const positionSize = tradeValueUsdt * leverage;
+                    const minNotional = minNotionals[symbol] || 5.0;
+
+                    if (positionSize < minNotional) {
+                        const minTradeValue = minNotional / leverage;
+                        belowMinimum.push({
+                            symbol: symbol,
+                            currentPositionSize: positionSize,
+                            minNotional: minNotional,
+                            currentTradeValue: tradeValueUsdt,
+                            requiredTradeValue: minTradeValue,
+                            leverage: leverage
+                        });
+                    }
+                });
+            }
+
+            // Store issues for modal use
+            this.minNotionalIssues = belowMinimum;
+
+            // Show modal if any symbols are below minimum
+            if (belowMinimum.length > 0) {
+                this.showMinNotionalModal(belowMinimum);
+            }
+        } catch (error) {
+            console.error('Error validating minimum notionals:', error);
+            // Don't show error toast as this is a non-critical validation
+        }
+    }
+
+    showMinNotionalModal(issues) {
+        const modal = document.getElementById('min-notional-modal');
+        const container = document.getElementById('min-notional-issues');
+
+        // Clear existing content
+        container.innerHTML = '';
+
+        // Create issue items
+        issues.forEach(issue => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'issue-item';
+            itemDiv.innerHTML = `
+                <div class="issue-details">
+                    <div class="symbol-name">${issue.symbol}</div>
+                    <div class="issue-info">
+                        <span class="issue-label">Current Position:</span>
+                        <span class="issue-value error">$${issue.currentPositionSize.toFixed(2)}</span>
+
+                        <span class="issue-label">Minimum Required:</span>
+                        <span class="issue-value">$${issue.minNotional.toFixed(2)}</span>
+
+                        <span class="issue-label">Current Trade Value:</span>
+                        <span class="issue-value error">${issue.currentTradeValue.toFixed(4)} USDT</span>
+
+                        <span class="issue-label">Required Trade Value:</span>
+                        <span class="issue-value success">${issue.requiredTradeValue.toFixed(4)} USDT</span>
+
+                        <span class="issue-label">Leverage:</span>
+                        <span class="issue-value">${issue.leverage}x</span>
+                    </div>
+                </div>
+                <button class="fix-btn" onclick="dashboard.fixSymbolMinNotional('${issue.symbol}', ${issue.requiredTradeValue})">
+                    Fix ${issue.symbol}
+                </button>
+            `;
+            container.appendChild(itemDiv);
+        });
+
+        // Show modal
+        modal.style.display = 'block';
+
+        // Also show a toast notification
+        this.showToast(`${issues.length} symbol(s) below minimum notional requirements`, 'warning');
+    }
+
+    closeMinNotionalModal() {
+        const modal = document.getElementById('min-notional-modal');
+        modal.style.display = 'none';
+    }
+
+    async fixSymbolMinNotional(symbol, requiredValue) {
+        try {
+            // Update the config for this symbol
+            if (!this.currentConfig.symbols[symbol]) {
+                this.showToast(`Symbol ${symbol} not found in configuration`, 'error');
+                return;
+            }
+
+            // Add a small buffer to ensure we meet the minimum
+            const adjustedValue = requiredValue * 1.1; // 10% buffer
+
+            this.currentConfig.symbols[symbol].trade_value_usdt = parseFloat(adjustedValue.toFixed(4));
+
+            // Save the updated config
+            const response = await axios.post('/api/config/symbol', {
+                symbol: symbol,
+                config: this.currentConfig.symbols[symbol]
+            });
+
+            if (response.data.success) {
+                this.showToast(`Updated ${symbol} trade value to ${adjustedValue.toFixed(4)} USDT`, 'success');
+
+                // Update the button to show it's fixed
+                event.target.textContent = '✓ Fixed';
+                event.target.disabled = true;
+
+                // Reload config to ensure UI is updated
+                await this.loadConfig();
+            } else {
+                this.showToast(`Failed to update ${symbol}`, 'error');
+            }
+        } catch (error) {
+            console.error(`Error fixing ${symbol}:`, error);
+            this.showToast(`Error updating ${symbol}: ${error.message}`, 'error');
+        }
+    }
+
+    async fixAllMinNotionals() {
+        if (!this.minNotionalIssues || this.minNotionalIssues.length === 0) {
+            this.showToast('No issues to fix', 'info');
+            return;
+        }
+
+        try {
+            // Update all symbols with issues
+            for (const issue of this.minNotionalIssues) {
+                const adjustedValue = issue.requiredTradeValue * 1.1; // 10% buffer
+
+                if (this.currentConfig.symbols[issue.symbol]) {
+                    this.currentConfig.symbols[issue.symbol].trade_value_usdt = parseFloat(adjustedValue.toFixed(4));
+                }
+            }
+
+            // Save the entire configuration
+            const response = await axios.post('/api/config', this.currentConfig);
+
+            if (response.data.success) {
+                this.showToast(`Fixed all ${this.minNotionalIssues.length} symbols`, 'success');
+
+                // Close modal and reload config
+                this.closeMinNotionalModal();
+                await this.loadConfig();
+            } else {
+                this.showToast('Failed to update configuration', 'error');
+            }
+        } catch (error) {
+            console.error('Error fixing all symbols:', error);
+            this.showToast(`Error: ${error.message}`, 'error');
         }
     }
 

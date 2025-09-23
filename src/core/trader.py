@@ -12,6 +12,9 @@ import time
 # Cache for symbol specifications
 symbol_specs = {}
 
+# Minimum notional value for orders (exchange requirement)
+MIN_NOTIONAL = 5.0
+
 def get_opposite_side(side):
     """Get opposite side for OPPOSITE mode."""
     return 'SELL' if side == 'BUY' else 'BUY'
@@ -30,14 +33,17 @@ async def fetch_exchange_info():
             for symbol_data in exchange_info.get('symbols', []):
                 symbol = symbol_data['symbol']
 
-                # Extract LOT_SIZE and PRICE_FILTER
+                # Extract LOT_SIZE, PRICE_FILTER, and MIN_NOTIONAL
                 lot_size_filter = None
                 price_filter = None
+                min_notional_filter = None
                 for filter_item in symbol_data.get('filters', []):
                     if filter_item['filterType'] == 'LOT_SIZE':
                         lot_size_filter = filter_item
                     elif filter_item['filterType'] == 'PRICE_FILTER':
                         price_filter = filter_item
+                    elif filter_item['filterType'] == 'MIN_NOTIONAL':
+                        min_notional_filter = filter_item
 
                 if lot_size_filter:
                     symbol_specs[symbol] = {
@@ -48,7 +54,8 @@ async def fetch_exchange_info():
                         'pricePrecision': symbol_data.get('pricePrecision', 2),
                         'tickSize': float(price_filter['tickSize']) if price_filter else None,
                         'minPrice': float(price_filter['minPrice']) if price_filter else None,
-                        'maxPrice': float(price_filter['maxPrice']) if price_filter else None
+                        'maxPrice': float(price_filter['maxPrice']) if price_filter else None,
+                        'minNotional': float(min_notional_filter['notional']) if min_notional_filter else 5.0
                     }
                     log.debug(f"Cached specs for {symbol}: {symbol_specs[symbol]}")
 
@@ -106,7 +113,19 @@ def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
     precision = specs['quantityPrecision']
     qty = round(qty, precision)
 
-    log.info(f"Calculated quantity for {symbol}: {usdt_value} USDT position @ {current_price} = {qty}")
+    # Verify notional value after rounding
+    min_notional = specs.get('minNotional', MIN_NOTIONAL)
+    notional_value = qty * current_price
+    if notional_value < min_notional and qty < specs['maxQty']:
+        # Try to increase by one step size to meet minimum
+        adjusted_qty = qty + step_size
+        adjusted_notional = adjusted_qty * current_price
+        if adjusted_notional >= min_notional and adjusted_qty <= specs['maxQty']:
+            log.info(f"{symbol}: Adjusting quantity from {qty} to {adjusted_qty} to meet minimum notional ${min_notional}")
+            qty = round(adjusted_qty, precision)
+
+    final_notional = qty * current_price
+    log.info(f"Calculated quantity for {symbol}: {usdt_value} USDT position @ {current_price} = {qty} (notional: ${final_notional:.2f})")
 
     return qty
 
@@ -140,20 +159,20 @@ async def validate_minimum_notionals():
         leverage = symbol_config.get('leverage', 10)
         position_size_usdt = trade_value_usdt * leverage
 
-        # Minimum notional is typically $5 for most symbols
-        MIN_NOTIONAL = 5.0
+        # Get minimum notional from exchange specs or default to 5.0
+        min_notional = symbol_specs.get(symbol, {}).get('minNotional', 5.0)
 
-        if position_size_usdt < MIN_NOTIONAL:
+        if position_size_usdt < min_notional:
             # Calculate minimum trade value needed
-            min_trade_value = MIN_NOTIONAL / leverage
+            min_trade_value = min_notional / leverage
 
-            log.warning(f"{symbol}: Position size ${position_size_usdt:.2f} < minimum ${MIN_NOTIONAL}")
+            log.warning(f"{symbol}: Position size ${position_size_usdt:.2f} < minimum ${min_notional}")
             log.info(f"{symbol}: Adjusting trade_value_usdt from {trade_value_usdt} to {min_trade_value:.2f}")
 
             # Update the config in memory
             config.SYMBOL_SETTINGS[symbol]['trade_value_usdt'] = min_trade_value
         else:
-            log.info(f"{symbol}: Position size ${position_size_usdt:.2f} OK (>= ${MIN_NOTIONAL})")
+            log.info(f"{symbol}: Position size ${position_size_usdt:.2f} OK (>= ${min_notional})")
 
 async def init_symbol_settings():
     """Set position mode, multi-assets mode, leverage and margin type for each symbol via API."""
@@ -299,6 +318,15 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
     leverage = symbol_config.get('leverage', 10)
     position_size_usdt = trade_collateral_usdt * leverage  # Actual position size
+
+    # Check if position meets minimum notional requirement
+    min_notional = symbol_specs.get(symbol, {}).get('minNotional', MIN_NOTIONAL)
+    if position_size_usdt < min_notional:
+        # Adjust to minimum with small buffer to account for rounding
+        adjusted_position_size = min_notional * 1.1  # 10% buffer
+        log.warning(f"{symbol}: Position size ${position_size_usdt:.2f} below minimum ${min_notional}")
+        log.info(f"{symbol}: Adjusting position size to ${adjusted_position_size:.2f}")
+        position_size_usdt = adjusted_position_size
 
     # Determine position side based on hedge mode
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)

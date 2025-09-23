@@ -208,6 +208,30 @@
         </div>
     </div>
 
+    <!-- Minimum Notional Validation Modal -->
+    <div id="min-notional-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>⚠️ Minimum Notional Requirements</h2>
+                <span class="modal-close" onclick="dashboard.closeMinNotionalModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="warning-text">The following symbols have position sizes below exchange minimum requirements:</p>
+                <div id="min-notional-issues" class="issues-container">
+                    <!-- Issues will be populated here -->
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="dashboard.fixAllMinNotionals()">
+                        Fix All Symbols
+                    </button>
+                    <button class="btn btn-secondary" onclick="dashboard.closeMinNotionalModal()">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>

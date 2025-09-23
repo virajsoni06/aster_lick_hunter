@@ -871,6 +871,146 @@ tbody tr:hover {
     color: var(--text-primary);
 }
 
+/* Minimum Notional Modal Styles */
+#min-notional-modal .modal-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+}
+
+#min-notional-modal .modal-header {
+    padding: 20px 30px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#min-notional-modal .modal-header h2 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 20px;
+}
+
+#min-notional-modal .warning-text {
+    color: var(--warning);
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+#min-notional-modal .issues-container {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+}
+
+#min-notional-modal .issue-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 15px;
+    align-items: center;
+}
+
+#min-notional-modal .issue-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#min-notional-modal .symbol-name {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--primary);
+    margin-bottom: 5px;
+}
+
+#min-notional-modal .issue-info {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+#min-notional-modal .issue-label {
+    color: var(--text-muted);
+    text-align: right;
+}
+
+#min-notional-modal .issue-value {
+    color: var(--text-primary);
+}
+
+#min-notional-modal .issue-value.error {
+    color: var(--danger);
+}
+
+#min-notional-modal .issue-value.success {
+    color: var(--success);
+}
+
+#min-notional-modal .fix-btn {
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.3s;
+    white-space: nowrap;
+}
+
+#min-notional-modal .fix-btn:hover {
+    background: #45a049;
+}
+
+#min-notional-modal .fix-btn:disabled {
+    background: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#min-notional-modal .modal-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+#min-notional-modal .btn {
+    padding: 10px 24px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+#min-notional-modal .btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+#min-notional-modal .btn-primary:hover {
+    background: #0056b3;
+}
+
+#min-notional-modal .btn-secondary {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+#min-notional-modal .btn-secondary:hover {
+    background: var(--bg-primary);
+}
+
 /* Responsive Updates */
 @media (max-width: 768px) {
     .balance-grid {
@@ -879,5 +1019,13 @@ tbody tr:hover {
 
     .pnl-section .card {
         grid-column: span 1;
+    }
+
+    #min-notional-modal .issue-item {
+        grid-template-columns: 1fr;
+    }
+
+    #min-notional-modal .fix-btn {
+        width: 100%;
     }
 }

@@ -573,11 +573,20 @@ def get_exchange_symbols():
                 if (symbol_info.get('status') == 'TRADING' and
                     symbol_info.get('contractType') == 'PERPETUAL' and
                     symbol_info.get('quoteAsset') == 'USDT'):
+
+                    # Extract MIN_NOTIONAL filter
+                    min_notional = 5.0  # Default value
+                    for filter_item in symbol_info.get('filters', []):
+                        if filter_item['filterType'] == 'MIN_NOTIONAL':
+                            min_notional = float(filter_item.get('notional', 5.0))
+                            break
+
                     symbols.append({
                         'symbol': symbol_info['symbol'],
                         'baseAsset': symbol_info['baseAsset'],
                         'pricePrecision': symbol_info.get('pricePrecision', 2),
-                        'quantityPrecision': symbol_info.get('quantityPrecision', 3)
+                        'quantityPrecision': symbol_info.get('quantityPrecision', 3),
+                        'minNotional': min_notional
                     })
 
             # Sort alphabetically
