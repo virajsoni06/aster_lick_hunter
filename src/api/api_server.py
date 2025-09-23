@@ -46,6 +46,9 @@ BASE_URL = 'https://fapi.asterdex.com'
 event_queue = deque(maxlen=100)
 event_lock = threading.Lock()
 
+# Create single PNL tracker instance
+pnl_tracker = PNLTracker(DB_PATH)
+
 # Default symbol configuration template
 DEFAULT_SYMBOL_CONFIG = {
     "volume_threshold_long": 10000,
@@ -793,7 +796,7 @@ def stream_events():
 def sync_pnl():
     """Sync PNL data from exchange."""
     try:
-        tracker = PNLTracker(DB_PATH)
+        tracker = pnl_tracker
         hours = request.json.get('hours', 24) if request.json else 24
         new_records = tracker.sync_recent_income(hours=hours)
         return jsonify({'success': True, 'new_records': new_records, 'message': f'Synced {new_records} new income records'})
@@ -804,7 +807,7 @@ def sync_pnl():
 def get_pnl_stats():
     """Get PNL statistics."""
     try:
-        tracker = PNLTracker(DB_PATH)
+        tracker = pnl_tracker
         days = request.args.get('days', 7, type=int)
         stats = tracker.get_pnl_stats(days=days)
         return jsonify(stats)
@@ -815,7 +818,7 @@ def get_pnl_stats():
 def get_symbol_performance():
     """Get PNL performance by symbol."""
     try:
-        tracker = PNLTracker(DB_PATH)
+        tracker = pnl_tracker
         days = request.args.get('days', 7, type=int)
         performance = tracker.get_symbol_performance(days=days)
         return jsonify(performance)
@@ -900,7 +903,6 @@ def monitor_database():
     last_liquidation_id = 0
     last_trade_id = 0
     last_pnl_sync = time.time()
-    pnl_tracker = PNLTracker(DB_PATH)
 
     # Get initial max IDs
     cursor = conn.execute('SELECT MAX(id) FROM liquidations')
@@ -965,7 +967,7 @@ def monitor_database():
 def sync_trade_pnl(order_id):
     """Sync PNL for a specific trade after it closes."""
     try:
-        tracker = PNLTracker(DB_PATH)
+        tracker = pnl_tracker
         # Sync recent income (last hour should capture the trade)
         new_records = tracker.sync_recent_income(hours=1)
 

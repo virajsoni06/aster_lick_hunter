@@ -88,7 +88,6 @@ class PNLTracker:
 
         conn.commit()
         conn.close()
-        print("PNL tracking database initialized")
 
     def fetch_income_history(self, symbol=None, income_type=None, start_time=None, end_time=None, limit=1000):
         """Fetch income history from the exchange."""
