@@ -4,6 +4,7 @@ import os
 import sys
 from src.utils.config import config
 from src.database.db import init_db, get_db_conn
+from src.database.auto_migrate import auto_migrate_positions
 from src.core.streamer import LiquidationStreamer
 from src.core.trader import init_symbol_settings, evaluate_trade, order_batcher, send_batch_orders
 from src.core.order_cleanup import OrderCleanup
@@ -65,6 +66,13 @@ def main():
             exit(1)
 
     log.info(f"Database tables verified: {', '.join(tables)}")
+
+    # Run auto-migration for existing positions
+    log.info("Checking for positions that need migration to tranche system...")
+    if auto_migrate_positions():
+        log.info("Position migration check completed")
+    else:
+        log.warning("Some positions could not be migrated, but continuing...")
 
     # Create shutdown event for graceful termination
     shutdown_event = None

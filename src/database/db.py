@@ -110,6 +110,16 @@ def init_db(db_path):
         )
     ''')
 
+    # Create migration tracking table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS migration_status (
+            migration_name TEXT PRIMARY KEY,
+            executed_at INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            details TEXT
+        )
+    ''')
+
     # Add new columns to existing tables (migration for existing databases)
     # Check if columns exist before adding them
     cursor.execute("PRAGMA table_info(trades)")
