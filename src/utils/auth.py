@@ -42,6 +42,24 @@ def make_authenticated_request(method, url, data=None, params=None):
 
         return requests.post(url, headers=headers, data=data)
 
+    elif method.upper() == 'PUT':
+        # PUT requests are similar to POST
+        if data is None:
+            data = {}
+        data['timestamp'] = timestamp
+
+        # Create query string from data for signature
+        query_string = urllib.parse.urlencode(data, doseq=True)
+        signature = create_signature(query_string, config.API_SECRET)
+        data['signature'] = signature
+
+        headers = {
+            'X-MBX-APIKEY': config.API_KEY,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+
+        return requests.put(url, headers=headers, data=data)
+
     elif method.upper() == 'DELETE':
         # DELETE requests need parameters in URL query string, not body
         if data is None:
