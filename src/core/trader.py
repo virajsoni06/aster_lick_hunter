@@ -149,9 +149,8 @@ async def fetch_exchange_info():
 def format_price(symbol, price):
     """Format price with correct precision and tick size for the symbol."""
     if symbol not in symbol_specs:
-        # Fallback to 6 decimals, strip trailing zeros
-        formatted = f"{price:.6f}"
-        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+        # Fallback to 6 decimals (do NOT strip trailing zeros)
+        return f"{price:.6f}"
 
     specs = symbol_specs[symbol]
     tick_size = specs.get('tickSize')
@@ -161,10 +160,9 @@ def format_price(symbol, price):
         # Round to nearest tick
         price = round(price / tick_size) * tick_size
 
-    # Format with correct precision and strip trailing zeros
+    # Format with correct precision (do NOT strip trailing zeros)
     precision = specs.get('pricePrecision', 2)
-    formatted = f"{price:.{precision}f}"
-    return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+    return f"{price:.{precision}f}"
 
 def format_quantity(symbol, qty):
     """Format quantity with correct precision and step size for the symbol."""
