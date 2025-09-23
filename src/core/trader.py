@@ -225,6 +225,33 @@ async def init_symbol_settings():
             else:
                 log.error(f"Failed to set leverage for {symbol}: {leverage_response.text}")
 
+def get_current_position_value(symbol, position_side='BOTH'):
+    """Get current position value in USDT for a symbol."""
+    try:
+        url = f"{config.BASE_URL}/fapi/v2/positionRisk"
+        response = make_authenticated_request('GET', url)
+
+        if response.status_code == 200:
+            for pos in response.json():
+                if pos['symbol'] == symbol:
+                    # Check position side matching
+                    pos_side = pos.get('positionSide', 'BOTH')
+                    if position_side != 'BOTH' and pos_side != position_side:
+                        continue
+
+                    position_amt = abs(float(pos.get('positionAmt', 0)))
+                    mark_price = float(pos.get('markPrice', 0))
+
+                    if position_amt > 0 and mark_price > 0:
+                        return position_amt * mark_price
+            return 0.0
+        else:
+            log.error(f"Failed to get positions: {response.text}")
+            return 0.0
+    except Exception as e:
+        log.error(f"Error getting position value: {e}")
+        return 0.0
+
 async def evaluate_trade(symbol, liquidation_side, qty, price):
     """Evaluate if we should place a trade based on volume threshold."""
     # Check if symbol is in config
@@ -265,13 +292,6 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     leverage = symbol_config.get('leverage', 10)
     position_size_usdt = trade_collateral_usdt * leverage  # Actual position size
 
-    # Calculate quantity from position size
-    trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
-
-    if trade_qty is None or trade_qty <= 0:
-        log.error(f"Could not calculate valid quantity for {symbol} with {trade_collateral_usdt} USDT collateral (${position_size_usdt} position)")
-        return
-
     # Determine position side based on hedge mode
     hedge_mode = config.GLOBAL_SETTINGS.get('hedge_mode', False)
     if hedge_mode:
@@ -284,6 +304,24 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
     else:
         # In one-way mode, always use BOTH
         position_side = 'BOTH'
+
+    # Check max position limit
+    max_position_usdt = symbol_config.get('max_position_usdt', float('inf'))
+    current_position_value = get_current_position_value(symbol, position_side)
+
+    if current_position_value + position_size_usdt > max_position_usdt:
+        log.warning(f"Would exceed max position for {symbol}: current {current_position_value:.2f} + new {position_size_usdt:.2f} > max {max_position_usdt:.2f} USDT")
+        conn.close()
+        return
+
+    # Calculate quantity from position size
+    trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
+
+    if trade_qty is None or trade_qty <= 0:
+        log.error(f"Could not calculate valid quantity for {symbol} with {trade_collateral_usdt} USDT collateral (${position_size_usdt} position)")
+        conn.close()
+        return
+
     offset_pct = symbol_config.get('price_offset_pct', 0.1)
     await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
     conn.close()  # Close the database connection
