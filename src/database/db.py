@@ -566,3 +566,97 @@ def get_tranches(conn, symbol=None, position_side=None):
         ''')
 
     return cursor.fetchall()
+
+def get_tranche_by_id(conn, tranche_id):
+    """Get a specific tranche by ID."""
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM position_tranches
+        WHERE tranche_id = ?
+    ''', (tranche_id,))
+    return cursor.fetchone()
+
+def update_tranche_orders(conn, tranche_id, tp_order_id=None, sl_order_id=None):
+    """Update TP/SL order IDs for a specific tranche."""
+    cursor = conn.cursor()
+    updates = []
+    params = []
+
+    if tp_order_id is not None:
+        updates.append('tp_order_id = ?')
+        params.append(tp_order_id)
+
+    if sl_order_id is not None:
+        updates.append('sl_order_id = ?')
+        params.append(sl_order_id)
+
+    if updates:
+        updates.append('updated_at = ?')
+        params.append(int(time.time()))
+        params.append(tranche_id)
+
+        cursor.execute(f'''
+            UPDATE position_tranches
+            SET {', '.join(updates)}
+            WHERE tranche_id = ?
+        ''', params)
+        conn.commit()
+        return cursor.rowcount > 0
+
+    return False
+
+def get_tranches_without_protection(conn, symbol=None):
+    """Get tranches that don't have both TP and SL orders."""
+    cursor = conn.cursor()
+
+    if symbol:
+        cursor.execute('''
+            SELECT * FROM position_tranches
+            WHERE symbol = ?
+            AND (tp_order_id IS NULL OR sl_order_id IS NULL)
+            ORDER BY symbol, position_side, tranche_id
+        ''', (symbol,))
+    else:
+        cursor.execute('''
+            SELECT * FROM position_tranches
+            WHERE tp_order_id IS NULL OR sl_order_id IS NULL
+            ORDER BY symbol, position_side, tranche_id
+        ''')
+
+    return cursor.fetchall()
+
+def clear_tranche_orders(conn, tranche_id, clear_tp=False, clear_sl=False):
+    """Clear TP/SL order IDs from a tranche (when orders are filled or canceled)."""
+    cursor = conn.cursor()
+    updates = []
+    params = []
+
+    if clear_tp:
+        updates.append('tp_order_id = NULL')
+
+    if clear_sl:
+        updates.append('sl_order_id = NULL')
+
+    if updates:
+        updates.append('updated_at = ?')
+        params.append(int(time.time()))
+        params.append(tranche_id)
+
+        cursor.execute(f'''
+            UPDATE position_tranches
+            SET {', '.join(updates)}
+            WHERE tranche_id = ?
+        ''', params)
+        conn.commit()
+        return cursor.rowcount > 0
+
+    return False
+
+def get_tranche_by_order(conn, order_id):
+    """Find which tranche a TP/SL order belongs to."""
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM position_tranches
+        WHERE tp_order_id = ? OR sl_order_id = ?
+    ''', (order_id, order_id))
+    return cursor.fetchone()

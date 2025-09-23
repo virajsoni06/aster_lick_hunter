@@ -220,6 +220,24 @@ class OrderCleanup:
 
                 # Update database
                 self.update_order_canceled(order_id)
+
+                # Clear the order from tranche if it was a TP/SL order
+                from src.database.db import get_tranche_by_order, clear_tranche_orders
+                conn = sqlite3.connect(config.DB_PATH)
+                tranche = get_tranche_by_order(conn, order_id)
+                if tranche:
+                    # Check if this order_id is the TP or SL
+                    tp_order_id = tranche[5] if len(tranche) > 5 else None
+                    sl_order_id = tranche[6] if len(tranche) > 6 else None
+
+                    if tp_order_id == order_id:
+                        clear_tranche_orders(conn, tranche[0], clear_tp=True)
+                        logger.info(f"Cleared TP order {order_id} from tranche {tranche[0]}")
+                    elif sl_order_id == order_id:
+                        clear_tranche_orders(conn, tranche[0], clear_sl=True)
+                        logger.info(f"Cleared SL order {order_id} from tranche {tranche[0]}")
+                conn.close()
+
                 return True
             else:
                 # Check for -2011 "Unknown order sent" - treat as already canceled success
@@ -231,6 +249,24 @@ class OrderCleanup:
                     logger.info(f"Order {order_id} already canceled or does not exist (treat as success)")
                     # Update database as canceled to prevent further attempts
                     self.update_order_canceled(order_id)
+
+                    # Also clear from tranche if it was a TP/SL order
+                    from src.database.db import get_tranche_by_order, clear_tranche_orders
+                    conn = sqlite3.connect(config.DB_PATH)
+                    tranche = get_tranche_by_order(conn, order_id)
+                    if tranche:
+                        # Check if this order_id is the TP or SL
+                        tp_order_id = tranche[5] if len(tranche) > 5 else None
+                        sl_order_id = tranche[6] if len(tranche) > 6 else None
+
+                        if tp_order_id == order_id:
+                            clear_tranche_orders(conn, tranche[0], clear_tp=True)
+                            logger.info(f"Cleared already-canceled TP order {order_id} from tranche {tranche[0]}")
+                        elif sl_order_id == order_id:
+                            clear_tranche_orders(conn, tranche[0], clear_sl=True)
+                            logger.info(f"Cleared already-canceled SL order {order_id} from tranche {tranche[0]}")
+                    conn.close()
+
                     return True
                 else:
                     logger.error(f"Failed to cancel order {order_id}: {response.text}")
@@ -483,6 +519,7 @@ class OrderCleanup:
 
             # Import format_price from trader which has the cached symbol specs
             from src.core.trader import format_price
+            from src.database.db import get_tranches
 
             # Check each position for missing TP/SL
             for pos_key, pos_detail in position_details.items():
@@ -501,6 +538,23 @@ class OrderCleanup:
                 if not symbol_config:
                     logger.debug(f"No configuration for {symbol}, skipping protection check")
                     continue
+
+                # Check if tranches exist and have TP/SL configured
+                conn = sqlite3.connect(config.DB_PATH)
+                tranches = get_tranches(conn, symbol, position_side)
+                tranche_has_tp_sl = False
+                if tranches:
+                    # Check if any tranche has TP/SL
+                    for tranche in tranches:
+                        # Assuming tranche columns: tranche_id, symbol, position_side, avg_entry_price,
+                        # total_quantity, tp_order_id, sl_order_id, price_band_lower, price_band_upper, created_at, updated_at
+                        tp_order_id = tranche[5] if len(tranche) > 5 else None
+                        sl_order_id = tranche[6] if len(tranche) > 6 else None
+                        if tp_order_id or sl_order_id:
+                            tranche_has_tp_sl = True
+                            logger.debug(f"Found tranche for {symbol} {position_side} with TP={tp_order_id}, SL={sl_order_id}")
+                            break
+                conn.close()
 
                 # Determine which side key to check for orders
                 if cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
@@ -692,7 +746,7 @@ class OrderCleanup:
                     logger.info(f"SIMULATE: Would place {len(orders_to_place)} recovery orders for {symbol}")
                     repaired_count += len(orders_to_place)
 
-            # Batch store all recovery order relationships
+            # Batch store all recovery order relationships and update tranches
             if recovery_orders_to_track:
                 logger.info(f"Storing {len(recovery_orders_to_track)} recovery order relationships")
                 for recovery_order in recovery_orders_to_track:
@@ -707,6 +761,20 @@ class OrderCleanup:
                             recovery_order['tp_order_id'],
                             recovery_order['sl_order_id']
                         )
+
+                        # Also update the tranche with the recovery TP/SL orders
+                        from src.database.db import get_tranches, update_tranche_orders
+
+                        # Find the tranche for this position
+                        tranches = get_tranches(conn, recovery_order['symbol'], recovery_order['position_side'])
+                        if tranches:
+                            # Use the first/primary tranche
+                            tranche_id = tranches[0][0]  # First column is tranche_id
+                            if update_tranche_orders(conn, tranche_id, recovery_order['tp_order_id'], recovery_order['sl_order_id']):
+                                logger.info(f"Updated tranche {tranche_id} with recovery TP/SL orders")
+                            else:
+                                logger.warning(f"Failed to update tranche {tranche_id} with recovery orders")
+
                         conn.commit()
                         conn.close()
                         logger.info(f"Stored recovery order relationship for {recovery_order['symbol']}: "

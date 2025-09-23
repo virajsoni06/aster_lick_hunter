@@ -1044,6 +1044,13 @@ async def place_tp_sl_orders(main_order_id, fill_price, tp_sl_params):
                 insert_order_relationship(conn, main_order_id, symbol, position_side, tp_order_id, sl_order_id, tranche_id)
                 log.info(f"Stored order relationship: main={main_order_id}, tp={tp_order_id}, sl={sl_order_id}, tranche={tranche_id}")
 
+                # Also update the tranche with TP/SL order IDs
+                from src.database.db import update_tranche_orders
+                if update_tranche_orders(conn, tranche_id, tp_order_id, sl_order_id):
+                    log.info(f"Updated tranche {tranche_id} with TP/SL orders")
+                else:
+                    log.warning(f"Failed to update tranche {tranche_id} with TP/SL orders")
+
                 # Verify orders were placed successfully
                 await asyncio.sleep(1)  # Small delay to ensure orders register
                 verification_attempts = 3
