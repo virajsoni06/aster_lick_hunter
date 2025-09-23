@@ -451,7 +451,7 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         volume = get_volume_in_window(conn, symbol, config.VOLUME_WINDOW_SEC)
         volume_type = "tokens"
 
-    if volume <= threshold:
+    if volume < threshold:
         position_type = "LONG" if trade_side == "BUY" else "SHORT"
         log.debug(f"Volume {volume:.2f} {volume_type} below {position_type} threshold {threshold} for {symbol}")
         conn.close()
