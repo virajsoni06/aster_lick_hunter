@@ -396,7 +396,8 @@ class Dashboard {
 
         // Create input fields for each config option
         const configFields = [
-            { key: 'volume_threshold', label: 'Volume Threshold', type: 'number', step: '0.01' },
+            { key: 'volume_threshold_long', label: 'Volume Threshold (Long)', type: 'number', step: '0.01' },
+            { key: 'volume_threshold_short', label: 'Volume Threshold (Short)', type: 'number', step: '0.01' },
             { key: 'leverage', label: 'Leverage', type: 'number', step: '1' },
             { key: 'margin_type', label: 'Margin Type', type: 'select', options: ['ISOLATED', 'CROSSED'] },
             { key: 'trade_side', label: 'Trade Side', type: 'select', options: ['OPPOSITE', 'SAME'] },
