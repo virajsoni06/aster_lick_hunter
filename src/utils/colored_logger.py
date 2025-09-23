@@ -192,7 +192,10 @@ class ColoredLogger:
     # Special trading event methods
     def success(self, message):
         """Log a success message in green."""
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"[SUCCESS] {message}")
+        elif COLORS_AVAILABLE:
             self.logger.info(f"{COLOR_SCHEME['SUCCESS']}{SYMBOLS['SUCCESS']} {message}{Style.RESET_ALL}")
         else:
             self.logger.info(f"[SUCCESS] {message}")
@@ -226,7 +229,10 @@ class ColoredLogger:
     def trade_failed(self, symbol, reason):
         """Log a failed trade."""
         message = f"Trade failed for {symbol}: {reason}"
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.error(f"[FAILED] {message}")
+        elif COLORS_AVAILABLE:
             self.logger.error(
                 f"{COLOR_SCHEME['TRADE_FAILED']}{SYMBOLS['ERROR']} {message}{Style.RESET_ALL}"
             )
@@ -238,8 +244,12 @@ class ColoredLogger:
         position_type = "Long" if side == "SELL" else "Short"
         message = f"{position_type} Liquidation: {symbol} {side} {qty} @ ${price:.4f} (${usdt_value:.2f}){volume_info}"
 
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            log_type = "[BIG LIQUIDATION]" if usdt_value > 50000 else "[LIQUIDATION]"
+            self.logger.info(f"{log_type} {message}")
         # Big liquidation if > $50k
-        if usdt_value > 50000:
+        elif usdt_value > 50000:
             if COLORS_AVAILABLE:
                 self.logger.info(
                     f"{COLOR_SCHEME['LIQUIDATION_BIG']}{SYMBOLS['LIQUIDATION']} BIG {message}{Style.RESET_ALL}"
@@ -278,7 +288,10 @@ class ColoredLogger:
         if details:
             message += f" - {details}"
 
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"[TRANCHE] {message}")
+        elif COLORS_AVAILABLE:
             self.logger.info(
                 f"{COLOR_SCHEME[color_key]}{SYMBOLS['TRANCHE']} {message}{Style.RESET_ALL}"
             )
@@ -311,7 +324,10 @@ class ColoredLogger:
 
     def shutdown(self, message):
         """Log shutdown messages."""
-        if COLORS_AVAILABLE:
+        # Use ASCII-safe symbols on Windows to avoid Unicode encode errors
+        if sys.platform == "win32":
+            self.logger.info(f"[WARNING] {message}")
+        elif COLORS_AVAILABLE:
             self.logger.info(
                 f"{COLOR_SCHEME['SHUTDOWN']}{SYMBOLS['WARNING']} {message}{Style.RESET_ALL}"
             )

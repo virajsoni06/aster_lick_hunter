@@ -803,6 +803,16 @@ def sync_pnl():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/pnl/resync', methods=['POST'])
+def resync_pnl():
+    """Resync all PNL summaries from existing data."""
+    try:
+        tracker = pnl_tracker
+        synced = tracker.resync_all_summaries()
+        return jsonify({'success': True, 'summaries_synced': synced, 'message': f'Resynced {synced} PNL summaries'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/pnl/stats')
 def get_pnl_stats():
     """Get PNL statistics."""
@@ -946,16 +956,31 @@ def monitor_database():
                     # Schedule PNL sync for this trade
                     threading.Timer(5.0, lambda: sync_trade_pnl(trade['order_id'])).start()
 
-            # Periodic PNL sync (every 5 minutes)
-            if time.time() - last_pnl_sync > 300:
+            # Periodic PNL sync (every 1 minute for full 7-days, every 5 minutes for recent)
+            elapsed = time.time() - last_pnl_sync
+            if elapsed > 60:  # Run sync every 1 minute
                 try:
-                    print("Running periodic PNL sync...")
-                    new_records = pnl_tracker.sync_recent_income(hours=1)
+                    full_sync = elapsed > 300  # Full sync if 5+ minutes elapsed
+                    hours = 168 if full_sync else 1  # 7 days or 1 hour
+
+                    add_event('pnl_sync_started', {'hours': hours, 'full_sync': full_sync})
+
+                    if full_sync:
+                        print("Running full periodic PNL sync (7 days)...")
+                    else:
+                        print("Running periodic PNL sync...")
+
+                    new_records = pnl_tracker.sync_recent_income(hours=hours)
+
+                    add_event('pnl_sync_completed', {'new_records': new_records, 'hours': hours, 'full_sync': full_sync})
+
                     if new_records > 0:
                         add_event('pnl_updated', {'new_records': new_records, 'message': f'Synced {new_records} new income records'})
                     last_pnl_sync = time.time()
                 except Exception as e:
                     print(f"PNL sync error: {e}")
+                    add_event('pnl_sync_completed', {'error': str(e)})
+                    last_pnl_sync = time.time()  # Still reset to prevent spam
 
             conn.close()
 

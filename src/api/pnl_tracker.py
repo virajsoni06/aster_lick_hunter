@@ -178,7 +178,7 @@ class PNLTracker:
         return new_records
 
     def update_pnl_summary(self, start_time=None, end_time=None):
-        """Update PNL summary statistics."""
+        """Update PNL summary statistics for the date range."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -187,82 +187,139 @@ class PNLTracker:
         if not start_time:
             start_time = end_time - (24 * 3600 * 1000)
 
-        # Get date for summary
-        date = datetime.fromtimestamp(start_time / 1000).strftime('%Y-%m-%d')
+        # Get range of dates to update
+        start_dt = datetime.fromtimestamp(start_time / 1000)
+        end_dt = datetime.fromtimestamp(end_time / 1000)
 
-        # Calculate realized PNL
-        cursor.execute('''
-            SELECT COALESCE(SUM(income), 0) FROM income_history
-            WHERE income_type = 'REALIZED_PNL'
-            AND timestamp >= ? AND timestamp <= ?
-        ''', (start_time, end_time))
-        realized_pnl = cursor.fetchone()[0]
+        current_date = start_dt.date()
+        end_date = end_dt.date()
 
-        # Calculate funding fees
-        cursor.execute('''
-            SELECT COALESCE(SUM(income), 0) FROM income_history
-            WHERE income_type = 'FUNDING_FEE'
-            AND timestamp >= ? AND timestamp <= ?
-        ''', (start_time, end_time))
-        funding_fees = cursor.fetchone()[0]
+        results = []
 
-        # Calculate commissions (negative values)
-        cursor.execute('''
-            SELECT COALESCE(SUM(income), 0) FROM income_history
-            WHERE income_type = 'COMMISSION'
-            AND timestamp >= ? AND timestamp <= ?
-        ''', (start_time, end_time))
-        commissions = cursor.fetchone()[0]
+        while current_date <= end_date:
+            # Calculate millis for this day
+            day_start = int(datetime.combine(current_date, datetime.min.time()).timestamp() * 1000)
+            day_end = int((datetime.combine(current_date, datetime.max.time()) + timedelta(microseconds=999999)).timestamp() * 1000)
 
-        # Count winning and losing trades
-        cursor.execute('''
-            SELECT
-                COUNT(CASE WHEN income > 0 THEN 1 END) as wins,
-                COUNT(CASE WHEN income < 0 THEN 1 END) as losses,
-                MAX(CASE WHEN income > 0 THEN income ELSE 0 END) as largest_win,
-                MIN(CASE WHEN income < 0 THEN income ELSE 0 END) as largest_loss
-            FROM income_history
-            WHERE income_type = 'REALIZED_PNL'
-            AND timestamp >= ? AND timestamp <= ?
-        ''', (start_time, end_time))
+            # Calculate realized PNL
+            cursor.execute('''
+                SELECT COALESCE(SUM(income), 0) FROM income_history
+                WHERE income_type = 'REALIZED_PNL'
+                AND timestamp >= ? AND timestamp <= ?
+            ''', (day_start, day_end))
+            realized_pnl = cursor.fetchone()[0]
 
-        stats = cursor.fetchone()
-        win_count = stats[0] or 0
-        loss_count = stats[1] or 0
-        largest_win = stats[2] or 0
-        largest_loss = stats[3] or 0
+            # Calculate funding fees
+            cursor.execute('''
+                SELECT COALESCE(SUM(income), 0) FROM income_history
+                WHERE income_type = 'FUNDING_FEE'
+                AND timestamp >= ? AND timestamp <= ?
+            ''', (day_start, day_end))
+            funding_fees = cursor.fetchone()[0]
 
-        total_pnl = realized_pnl + funding_fees + commissions
-        trade_count = win_count + loss_count
+            # Calculate commissions (negative values)
+            cursor.execute('''
+                SELECT COALESCE(SUM(income), 0) FROM income_history
+                WHERE income_type = 'COMMISSION'
+                AND timestamp >= ? AND timestamp <= ?
+            ''', (day_start, day_end))
+            commissions = cursor.fetchone()[0]
 
-        # Insert or update summary
-        cursor.execute('''
-            INSERT OR REPLACE INTO pnl_summary
-            (date, realized_pnl, funding_fees, commissions, total_pnl,
-             trade_count, win_count, loss_count, largest_win, largest_loss, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            date, realized_pnl, funding_fees, commissions, total_pnl,
-            trade_count, win_count, loss_count, largest_win, largest_loss,
-            int(time.time() * 1000)
-        ))
+            # Count winning and losing trades
+            cursor.execute('''
+                SELECT
+                    COUNT(CASE WHEN income > 0 THEN 1 END) as wins,
+                    COUNT(CASE WHEN income < 0 THEN 1 END) as losses,
+                    MAX(CASE WHEN income > 0 THEN income ELSE 0 END) as largest_win,
+                    MIN(CASE WHEN income < 0 THEN income ELSE 0 END) as largest_loss
+                FROM income_history
+                WHERE income_type = 'REALIZED_PNL'
+                AND timestamp >= ? AND timestamp <= ?
+            ''', (day_start, day_end))
+
+            stats = cursor.fetchone()
+            win_count = stats[0] or 0
+            loss_count = stats[1] or 0
+            largest_win = stats[2] or 0
+            largest_loss = stats[3] or 0
+
+            total_pnl = realized_pnl + funding_fees + commissions
+            trade_count = win_count + loss_count
+
+            date_str = current_date.strftime('%Y-%m-%d')
+
+            # Insert or update summary for this date
+            cursor.execute('''
+                INSERT OR REPLACE INTO pnl_summary
+                (date, realized_pnl, funding_fees, commissions, total_pnl,
+                 trade_count, win_count, loss_count, largest_win, largest_loss, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                date_str, realized_pnl, funding_fees, commissions, total_pnl,
+                trade_count, win_count, loss_count, largest_win, largest_loss,
+                int(time.time() * 1000)
+            ))
+
+            result = {
+                'date': date_str,
+                'realized_pnl': realized_pnl,
+                'funding_fees': funding_fees,
+                'commissions': commissions,
+                'total_pnl': total_pnl,
+                'trade_count': trade_count,
+                'win_count': win_count,
+                'loss_count': loss_count,
+                'win_rate': (win_count / trade_count * 100) if trade_count > 0 else 0,
+                'largest_win': largest_win,
+                'largest_loss': largest_loss
+            }
+            results.append(result)
+
+            current_date += timedelta(days=1)
 
         conn.commit()
         conn.close()
+        return results
+        
+    def resync_all_summaries(self):
+        """Resync all PNL summaries based on existing income_history data."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
 
-        return {
-            'date': date,
-            'realized_pnl': realized_pnl,
-            'funding_fees': funding_fees,
-            'commissions': commissions,
-            'total_pnl': total_pnl,
-            'trade_count': trade_count,
-            'win_count': win_count,
-            'loss_count': loss_count,
-            'win_rate': (win_count / trade_count * 100) if trade_count > 0 else 0,
-            'largest_win': largest_win,
-            'largest_loss': largest_loss
-        }
+        # Get all unique dates from income_history
+        cursor.execute('''
+            SELECT DISTINCT DATE(timestamp / 1000, 'unixepoch') as date_str
+            FROM income_history
+            ORDER BY date_str ASC
+        ''')
+        dates = cursor.fetchall()
+        conn.close()
+
+        if not dates:
+            return 0
+
+        # For each date, update summary
+        updated_count = 0
+        start_of_day = datetime.min.time()
+
+        for date_row in dates:
+            date_str = date_row[0]
+            try:
+                date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                day_start = int(datetime.combine(date_obj, datetime.min.time()).timestamp() * 1000)
+                day_end = int((datetime.combine(date_obj, datetime.max.time()) + timedelta(microseconds=999999)).timestamp() * 1000)
+
+                print(f"Resyncing PNL summary for {date_str}")
+
+                # Update using the modified update_pnl_summary (but it updates ranges, so we pass single day)
+                # Since we modified it to handle ranges, we can call with day_start, day_end
+                self.update_pnl_summary(day_start, day_end)
+                updated_count += 1
+            except Exception as e:
+                print(f"Error resyncing {date_str}: {e}")
+
+        print(f"Resynced {updated_count} PNL summaries")
+        return updated_count
 
     def get_pnl_stats(self, days=7):
         """Get PNL statistics for the specified number of days."""

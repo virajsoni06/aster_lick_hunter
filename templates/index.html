@@ -11,18 +11,25 @@
 <body>
     <div class="container">
         <!-- Header -->
-        <header class="header">
-            <h1>Aster Liquidation Hunter</h1>
-            <div class="header-controls">
-                <span id="connection-status" class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Connecting...</span>
-                </span>
-                <button id="refresh-btn" class="btn btn-primary">Refresh</button>
-                <button onclick="window.location.href='/setup'" class="btn btn-secondary" title="API Setup">🔑</button>
-                <button id="settings-btn" class="btn-settings">⚙</button>
-            </div>
-        </header>
+<header class="header">
+    <div class="header-top">
+        <div id="loading-indicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <span>Syncing...</span>
+        </div>
+        <div id="last-updated" class="last-updated">Last updated: Never</div>
+    </div>
+    <h1>Aster Liquidation Hunter</h1>
+    <div class="header-controls">
+        <span id="connection-status" class="status-indicator">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </span>
+        <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+        <button onclick="window.location.href='/setup'" class="btn btn-secondary" title="API Setup">🔑</button>
+        <button id="settings-btn" class="btn-settings">⚙</button>
+    </div>
+</header>
 
         <!-- Focused Dashboard Layout -->
         <div class="dashboard-layout">
@@ -47,7 +54,6 @@
                         <span id="unrealized-pnl" class="balance-value">$0.00</span>
                     </div>
                 </div>
-                <button id="sync-balance-btn" class="btn btn-primary" style="margin-top: 10px;">Sync Balance</button>
             </div>
 
             <!-- Open Positions -->
@@ -99,7 +105,6 @@
                             <span id="pnl-trades" class="stat-value">0</span>
                         </div>
                     </div>
-                    <button id="sync-pnl-btn" class="btn btn-primary" style="margin-top: 10px;">Sync PNL Data</button>
                 </div>
 
                 <div class="card pnl-chart">

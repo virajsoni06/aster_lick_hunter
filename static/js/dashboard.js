@@ -18,6 +18,9 @@ class Dashboard {
         // Load initial data
         await this.loadAllData();
 
+        // Initial timestamp
+        this.updateLastUpdated();
+
         // Set up refresh interval (every 5 seconds)
         this.refreshInterval = setInterval(() => this.refreshData(), 5000);
 
@@ -50,11 +53,7 @@ class Dashboard {
         document.getElementById('remove-symbol-btn').addEventListener('click', () => this.removeSymbol());
         document.getElementById('symbol-search').addEventListener('input', (e) => this.filterSymbols(e.target.value));
 
-        // PNL sync button
-        const syncBtn = document.getElementById('sync-pnl-btn');
-        if (syncBtn) {
-            syncBtn.addEventListener('click', () => this.syncPNLData());
-        }
+        // PNL sync is now automated
 
         // Settings button
         document.getElementById('settings-btn').addEventListener('click', () => this.openSettingsModal());
@@ -77,44 +76,51 @@ class Dashboard {
         };
     }
 
-    handleRealtimeEvent(event) {
-        switch(event.type) {
-            case 'new_liquidation':
-                this.addLiquidationRow(event.data);
-                this.showToast('New liquidation detected', 'info');
-                break;
-            case 'new_trade':
-                this.addTradeRow(event.data);
-                this.showToast(`Trade executed: ${event.data.symbol}`, 'success');
-                break;
-            case 'config_updated':
-                this.showToast(event.data.message, 'success');
-                break;
-            case 'symbol_added':
-                this.showToast(event.data.message, 'success');
-                this.loadConfig(); // Reload config to update selectors
-                break;
-            case 'symbol_removed':
-                this.showToast(event.data.message, 'warning');
-                this.loadConfig(); // Reload config to update selectors
-                break;
-            case 'pnl_updated':
-                this.showToast(event.data.message, 'info');
-                // Reload PNL data and trades with updated PNL
-                this.loadPNLData();
-                this.loadTrades();
-                break;
-            case 'trade_pnl_synced':
-                // Refresh trades to show updated PNL
-                this.loadTrades();
-                // Also update PNL summary
-                this.loadPNLData();
-                break;
-            case 'heartbeat':
-                // Keep connection alive
-                break;
+        handleRealtimeEvent(event) {
+            switch(event.type) {
+                case 'new_liquidation':
+                    this.addLiquidationRow(event.data);
+                    this.showToast('New liquidation detected', 'info');
+                    break;
+                case 'new_trade':
+                    this.addTradeRow(event.data);
+                    this.showToast(`Trade executed: ${event.data.symbol}`, 'success');
+                    break;
+                case 'config_updated':
+                    this.showToast(event.data.message, 'success');
+                    break;
+                case 'symbol_added':
+                    this.showToast(event.data.message, 'success');
+                    this.loadConfig(); // Reload config to update selectors
+                    break;
+                case 'symbol_removed':
+                    this.showToast(event.data.message, 'warning');
+                    this.loadConfig(); // Reload config to update selectors
+                    break;
+                case 'pnl_sync_started':
+                    this.showSyncIndicator();
+                    break;
+                case 'pnl_sync_completed':
+                    this.hideSyncIndicator();
+                    this.updateLastUpdated();
+                    break;
+                case 'pnl_updated':
+                    this.showToast(event.data.message, 'info');
+                    // Reload PNL data and trades with updated PNL
+                    this.loadPNLData();
+                    this.loadTrades();
+                    break;
+                case 'trade_pnl_synced':
+                    // Refresh trades to show updated PNL
+                    this.loadTrades();
+                    // Also update PNL summary
+                    this.loadPNLData();
+                    break;
+                case 'heartbeat':
+                    // Keep connection alive
+                    break;
+            }
         }
-    }
 
     async loadAllData() {
         try {
@@ -1412,6 +1418,34 @@ class Dashboard {
             const card = this.createSymbolCard(symbolInfo, isConfigured);
             container.appendChild(card);
         });
+    }
+
+    showSyncIndicator() {
+        const indicator = document.getElementById('loading-indicator');
+        if (indicator) {
+            indicator.style.display = 'flex';
+        }
+    }
+
+    hideSyncIndicator() {
+        const indicator = document.getElementById('loading-indicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+    }
+
+    updateLastUpdated() {
+        const element = document.getElementById('last-updated');
+        if (element) {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            element.textContent = `Last updated: ${timeString}`;
+        }
     }
 }
 
