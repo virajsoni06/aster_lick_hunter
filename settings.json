@@ -2,7 +2,6 @@
   "globals": {
     "volume_window_sec": 60,
     "simulate_only": false,
-    "db_path": "bot.db",
     "multi_assets_mode": true,
     "hedge_mode": true,
     "set_margin_type": true,

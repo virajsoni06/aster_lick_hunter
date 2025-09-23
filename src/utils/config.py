@@ -32,9 +32,8 @@ class Config:
 
     @property
     def DB_PATH(self):
-        db_name = self.GLOBAL_SETTINGS.get('db_path', 'bot.db')
-        # Use data folder for database
-        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', db_name)
+        # Always use data/bot.db
+        return 'data/bot.db'
 
     # Aster DEX endpoints
     BASE_URL = 'https://fapi.asterdex.com'
