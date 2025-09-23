@@ -1,4 +1,8 @@
 # 🚀 Aster Liquidation Hunter Bot
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Status](https://img.shields.io/badge/status-active-success)](https://github.com/CryptoGnome/aster_lick_hunter)
+[![Dashboard](https://img.shields.io/badge/dashboard-web--based-orange)](http://localhost:5000)
 
 ## 💝 Support Development - This Bot is 100% FREE!
 
@@ -9,11 +13,6 @@
 *By using this referral link for your new account, you help fund continued improvements and new features while getting the exact same trading conditions. Thank you for your support!*
 
 ---
-
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Status](https://img.shields.io/badge/status-active-success)](https://github.com/CryptoGnome/aster_lick_hunter)
-[![Dashboard](https://img.shields.io/badge/dashboard-web--based-orange)](http://localhost:5000)
 
 An advanced cryptocurrency trading bot that monitors real-time liquidation events on Aster DEX and executes intelligent counter-trades based on configurable volume thresholds. Features a comprehensive web dashboard for monitoring, analytics, and configuration management.
 
