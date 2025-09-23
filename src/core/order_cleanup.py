@@ -354,10 +354,7 @@ class OrderCleanup:
 
                 # First check if this order is tracked in our order relationships
                 is_tracked = self.is_order_related_to_position(order_id, symbol)
-                if is_tracked:
-                    # This is a tracked TP/SL order, skip cancellation even if no position
-                    logger.debug(f"Order {order_id} is a tracked TP/SL order, will not cancel")
-                    continue  # Skip this order entirely
+                # Note: We NO LONGER skip tracked orders - they still need position validation!
 
                 # Check if there's a matching position
                 should_cancel = False
@@ -381,21 +378,30 @@ class OrderCleanup:
                             if not has_any_position:
                                 # No position exists at all for this symbol
                                 should_cancel = True
-                                logger.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
+                                if is_tracked:
+                                    logger.warning(f"Found TRACKED but orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
+                                else:
+                                    logger.warning(f"Found orphaned {position_side} {order_type} order {order_id} for {symbol} with no {position_side} position (age: {order_age_seconds:.0f}s)")
                     else:
                         # BOTH position side in hedge mode - check if any position exists
                         position = positions.get(symbol)
                         if not position or not position.get('has_position', False):
                             # No position exists for this symbol
                             should_cancel = True
-                            logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                            if is_tracked:
+                                logger.warning(f"Found TRACKED but orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                            else:
+                                logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
                 else:
                     # One-way mode
                     position = positions.get(symbol)
                     if not position or not position.get('has_position', False):
                         # No position exists for this symbol
                         should_cancel = True
-                        logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                        if is_tracked:
+                            logger.warning(f"Found TRACKED but orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
+                        else:
+                            logger.warning(f"Found orphaned {order_type} order {order_id} for {symbol} with no position (age: {order_age_seconds:.0f}s)")
 
                 if should_cancel:
                     # Additional safety check: Query database for recent main orders
