@@ -50,6 +50,31 @@
                 <button id="sync-balance-btn" class="btn btn-primary" style="margin-top: 10px;">Sync Balance</button>
             </div>
 
+            <!-- Open Positions -->
+            <div class="card open-positions">
+                <h2>Open Positions</h2>
+                <div class="table-container">
+                    <table id="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Quantity</th>
+                                <th>Entry Price</th>
+                                <th>Mark Price</th>
+                                <th>PNL</th>
+                                <th>PNL %</th>
+                                <th>Margin</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positions-tbody">
+                            <!-- Positions will be populated here -->
+                        </tbody>
+                    </table>
+                    <div id="no-positions" class="no-data" style="display: none;">No open positions</div>
+                </div>
+            </div>
+
             <!-- PNL Analytics -->
             <div class="pnl-section">
                 <div class="card pnl-summary">
