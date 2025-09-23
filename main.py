@@ -66,15 +66,21 @@ def main():
 
     log.info(f"Database tables verified: {', '.join(tables)}")
 
-    # Set up signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
-        log.shutdown("Received shutdown signal, stopping...")
-        asyncio.get_event_loop().stop()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # Create shutdown event for graceful termination
+    shutdown_event = None
 
     async def start_bot():
+        nonlocal shutdown_event
+        shutdown_event = asyncio.Event()
+
+        # Set up signal handlers for graceful shutdown
+        def signal_handler(signum, frame):
+            log.shutdown("Received shutdown signal, stopping...")
+            if shutdown_event:
+                shutdown_event.set()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
         # Initialize symbol settings (leverage/margin type)
         await init_symbol_settings()
 
@@ -109,15 +115,45 @@ def main():
         streamer = LiquidationStreamer(message_handler=message_handler)
 
         try:
-            # Run the listener
-            await streamer.listen()
+            # Create tasks for both the listener and shutdown monitor
+            listen_task = asyncio.create_task(streamer.listen())
+            shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+            # Wait for either the listener to exit or shutdown signal
+            done, pending = await asyncio.wait(
+                {listen_task, shutdown_task},
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         finally:
             # Cleanup on shutdown
             log.info("Shutting down services...")
+
+            # Stop order cleanup first (non-async)
             order_cleanup.stop()
-            await user_stream.stop()
+
+            # Cancel and wait for user stream task
             if not user_stream_task.done():
                 user_stream_task.cancel()
+                try:
+                    await user_stream_task
+                except asyncio.CancelledError:
+                    pass
+
+            # Stop user stream with timeout
+            try:
+                await asyncio.wait_for(user_stream.stop(), timeout=5.0)
+            except asyncio.TimeoutError:
+                log.warning("User stream stop timed out")
+            except Exception as e:
+                log.warning(f"Error stopping user stream: {e}")
 
     # Run the bot
     try:

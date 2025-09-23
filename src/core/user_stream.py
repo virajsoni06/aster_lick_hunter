@@ -433,16 +433,28 @@ class UserDataStream:
         # Cancel keepalive
         if self.keepalive_task:
             self.keepalive_task.cancel()
+            try:
+                await self.keepalive_task
+            except asyncio.CancelledError:
+                pass
             self.keepalive_task = None
 
-        # Close WebSocket
+        # Close WebSocket with timeout
         if self.ws:
-            await self.ws.close()
+            try:
+                await asyncio.wait_for(self.ws.close(), timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("WebSocket close timed out")
+            except Exception as e:
+                logger.warning(f"Error closing WebSocket: {e}")
             self.ws = None
 
         # Close listen key
         if self.listen_key:
-            await self.close_listen_key()
+            try:
+                await self.close_listen_key()
+            except Exception as e:
+                logger.warning(f"Error closing listen key: {e}")
             self.listen_key = None
 
         logger.info("User data stream stopped")
