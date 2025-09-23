@@ -22,7 +22,8 @@
   },
   "symbols": {
     "BTCUSDT": {
-      "volume_threshold": 100000,
+      "volume_threshold_long": 100000,
+      "volume_threshold_short": 250000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -37,7 +38,8 @@
       "price_protect": false
     },
     "ETHUSDT": {
-      "volume_threshold": 10000,
+      "volume_threshold_long": 10000,
+      "volume_threshold_short": 50000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -52,7 +54,8 @@
       "price_protect": false
     },
     "SOLUSDT": {
-      "volume_threshold": 8000,
+      "volume_threshold_long": 8000,
+      "volume_threshold_short": 50000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -67,7 +70,8 @@
       "price_protect": false
     },
     "ASTERUSDT": {
-      "volume_threshold": 5000,
+      "volume_threshold_long": 5000,
+      "volume_threshold_short": 25000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -82,7 +86,8 @@
       "price_protect": false
     },
       "AVNTUSDT": {
-      "volume_threshold": 5000,
+      "volume_threshold_long": 5000,
+      "volume_threshold_short": 25000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -97,7 +102,8 @@
       "price_protect": false
     },
     "XRPUSDT": {
-      "volume_threshold": 10000,
+      "volume_threshold_long": 10000,
+      "volume_threshold_short": 50000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -112,7 +118,8 @@
       "price_protect": false
     },
     "WLFIUSDT": {
-      "volume_threshold": 5000,
+      "volume_threshold_long": 5000,
+      "volume_threshold_short": 25000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -127,7 +134,8 @@
       "price_protect": false
     },
     "HEMIUSDT": {
-      "volume_threshold": 10000,
+      "volume_threshold_long": 10000,
+      "volume_threshold_short": 25000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -142,7 +150,8 @@
       "price_protect": false
     },
     "PUMPUSDT": {
-      "volume_threshold": 2000,
+      "volume_threshold_long": 2000,
+      "volume_threshold_short": 13000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -157,7 +166,8 @@
       "price_protect": false
     },
     "FARTCOINUSDT": {
-      "volume_threshold": 2000,
+      "volume_threshold_long": 2000,
+      "volume_threshold_short": 13000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",
@@ -172,7 +182,8 @@
       "price_protect": false
     },
     "HYPEUSDT": {
-      "volume_threshold": 2000,
+      "volume_threshold_long": 2000,
+      "volume_threshold_short": 20000,
       "leverage": 10,
       "margin_type": "CROSSED",
       "trade_side": "OPPOSITE",

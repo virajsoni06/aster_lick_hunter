@@ -259,6 +259,23 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         log.debug(f"Symbol {symbol} not in config")
         return
 
+    # Get symbol-specific settings
+    symbol_config = config.SYMBOL_SETTINGS[symbol]
+
+    # First determine the trade side
+    trade_side_value = symbol_config.get('trade_side', 'OPPOSITE')
+    if trade_side_value == 'OPPOSITE':
+        trade_side = get_opposite_side(liquidation_side)
+    else:
+        trade_side = trade_side_value
+
+    # Determine which volume threshold to use based on trade side
+    # Check for separate thresholds first, fallback to single threshold
+    if trade_side == 'BUY':  # Opening a LONG position
+        threshold = symbol_config.get('volume_threshold_long', symbol_config.get('volume_threshold', 10000))
+    else:  # Opening a SHORT position
+        threshold = symbol_config.get('volume_threshold_short', symbol_config.get('volume_threshold', 10000))
+
     # Check volume window (use USDT volume if enabled)
     use_usdt_volume = config.GLOBAL_SETTINGS.get('use_usdt_volume', False)
     conn = get_db_conn()  # Get fresh connection
@@ -269,23 +286,14 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         volume = get_volume_in_window(conn, symbol, config.VOLUME_WINDOW_SEC)
         volume_type = "tokens"
 
-    threshold = config.SYMBOL_SETTINGS[symbol]['volume_threshold']
     if volume <= threshold:
-        log.debug(f"Volume {volume:.2f} {volume_type} below threshold {threshold} for {symbol}")
+        position_type = "LONG" if trade_side == "BUY" else "SHORT"
+        log.debug(f"Volume {volume:.2f} {volume_type} below {position_type} threshold {threshold} for {symbol}")
         conn.close()
         return
 
-    log.info(f"Volume threshold met for {symbol}: {volume:.2f} {volume_type} > {threshold}")
-
-    # Get symbol-specific settings
-    symbol_config = config.SYMBOL_SETTINGS[symbol]
-
-    # Decide side
-    trade_side_value = symbol_config.get('trade_side', 'OPPOSITE')
-    if trade_side_value == 'OPPOSITE':
-        trade_side = get_opposite_side(liquidation_side)
-    else:
-        trade_side = trade_side_value
+    position_type = "LONG" if trade_side == "BUY" else "SHORT"
+    log.info(f"Volume threshold met for {symbol} {position_type}: {volume:.2f} {volume_type} > {threshold}")
 
     # Calculate position size from collateral and leverage
     trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
