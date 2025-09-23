@@ -250,6 +250,28 @@ body {
     text-align: right;
 }
 
+/* Positions Table Alignment */
+#positions-table td:nth-child(3),
+#positions-table td:nth-child(4),
+#positions-table td:nth-child(5),
+#positions-table td:nth-child(6),
+#positions-table td:nth-child(7),
+#positions-table td:nth-child(8),
+#positions-table td:nth-child(9) {
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
+/* Symbol Performance Table Alignment */
+#symbol-performance-table td:nth-child(2),
+#symbol-performance-table td:nth-child(3),
+#symbol-performance-table td:nth-child(4),
+#symbol-performance-table td:nth-child(5),
+#symbol-performance-table td:nth-child(6) {
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
 /* Modal Styles */
 .modal {
     display: none;

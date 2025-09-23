@@ -290,6 +290,13 @@ def get_positions():
         # Determine side
         pos['side'] = 'LONG' if pos_amt > 0 else 'SHORT' if pos_amt < 0 else 'NONE'
 
+        # Map margin based on margin type
+        if pos.get('marginType') == 'isolated':
+            margin = pos.get('isolatedMargin', 0)
+        else:
+            margin = pos['positionValue'] / float(pos.get('leverage', 1)) if pos['positionValue'] > 0 else 0
+        pos['initialMargin'] = float(margin)
+
     return jsonify(positions)
 
 @app.route('/api/account')

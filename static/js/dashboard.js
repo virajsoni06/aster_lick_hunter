@@ -226,6 +226,7 @@ class Dashboard {
                 ${pnlPct.toFixed(2)}%
             </td>
             <td>${this.formatCurrency(position.initialMargin)}</td>
+            <td>${position.leverage}x</td>
         `;
         return row;
     }
