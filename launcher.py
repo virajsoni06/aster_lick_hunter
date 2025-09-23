@@ -72,6 +72,30 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    # Check for .env file first
+    if not os.path.exists('.env'):
+        print("\n[Launcher] ⚠️  No .env file found!")
+        print("[Launcher] Starting setup wizard to configure API credentials...")
+        print("")
+
+        # Run the setup utility
+        try:
+            result = subprocess.run([sys.executable, "setup_env.py"], check=False)
+            if result.returncode != 0:
+                print("\n[Launcher] Setup cancelled or failed. Exiting...")
+                sys.exit(1)
+        except FileNotFoundError:
+            print("[Launcher] Error: setup_env.py not found!")
+            print("[Launcher] Please create .env file manually with API_KEY and API_SECRET")
+            sys.exit(1)
+
+        # Verify .env was created
+        if not os.path.exists('.env'):
+            print("[Launcher] .env file was not created. Exiting...")
+            sys.exit(1)
+
+        print("")
+
     # Check for required files
     required_files = ['main.py', 'src/api/api_server.py', 'settings.json', '.env']
     for file in required_files:

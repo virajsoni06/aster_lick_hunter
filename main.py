@@ -1,5 +1,7 @@
 import asyncio
 import signal
+import os
+import sys
 from src.utils.config import config
 from src.database.db import init_db, get_db_conn
 from src.core.streamer import LiquidationStreamer
@@ -10,6 +12,31 @@ from src.utils.utils import log
 
 def main():
     """Main entry point for the bot."""
+    # Check for .env file first
+    if not os.path.exists('.env'):
+        print("\n⚠️  No .env file found!")
+        print("Starting setup wizard to configure API credentials...\n")
+
+        # Run the setup utility
+        try:
+            import subprocess
+            result = subprocess.run([sys.executable, "setup_env.py"], check=False)
+            if result.returncode != 0:
+                print("\nSetup cancelled or failed. Exiting...")
+                sys.exit(1)
+        except FileNotFoundError:
+            print("Error: setup_env.py not found!")
+            print("Please create .env file manually with API_KEY and API_SECRET")
+            print("\nGet your API key at: https://www.asterdex.com/en/referral/3TixB2")
+            sys.exit(1)
+
+        # Verify .env was created
+        if not os.path.exists('.env'):
+            print(".env file was not created. Exiting...")
+            sys.exit(1)
+
+        print("")
+
     log.info("Starting Aster Liquidation Hunter Bot")
 
     # Initialize DB

@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aster Bot - Setup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .setup-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .setup-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .setup-header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .setup-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .setup-content {
+            padding: 40px 30px;
+        }
+
+        .status-message {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+
+        .status-message.error {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+
+        .status-message.success {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+
+        .steps-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .steps-box h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .steps-box ol {
+            padding-left: 20px;
+            color: #666;
+        }
+
+        .steps-box li {
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .referral-link {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .referral-link:hover {
+            transform: translateY(-2px);
+        }
+
+        .referral-link a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e4e8;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group small {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+            display: block;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .existing-config {
+            background: #e7f5ff;
+            border: 1px solid #74c0fc;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .existing-config p {
+            color: #1c7ed6;
+            margin-bottom: 10px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <h1>🚀 Aster Liquidation Hunter Bot</h1>
+            <p>API Configuration Setup</p>
+        </div>
+
+        <div class="setup-content">
+            <div id="statusMessage" class="status-message hidden"></div>
+
+            <div id="existingConfig" class="existing-config hidden">
+                <p>✅ API credentials are already configured!</p>
+                <p>Your existing credentials are loaded securely. You can update them below if needed.</p>
+            </div>
+
+            <div class="steps-box">
+                <h3>Setup Instructions</h3>
+                <ol>
+                    <li>Click the button below to open Aster DEX (using referral link)</li>
+                    <li>Create an account or login to your existing account</li>
+                    <li>Navigate to <strong>API Management</strong> in your dashboard</li>
+                    <li>Create a new API key with <strong>trading permissions</strong></li>
+                    <li>Copy the API Key and Secret</li>
+                    <li>Paste them in the form below</li>
+                </ol>
+            </div>
+
+            <div class="referral-link" onclick="openReferralLink()">
+                <a href="#" onclick="event.preventDefault()">
+                    <span>🔗</span>
+                    <span>Open Aster DEX to Get API Keys</span>
+                </a>
+            </div>
+
+            <form id="setupForm">
+                <div class="form-group">
+                    <label for="apiKey">API Key</label>
+                    <input
+                        type="text"
+                        id="apiKey"
+                        name="apiKey"
+                        placeholder="Enter your API key"
+                        required
+                        minlength="20"
+                    >
+                    <small>The API key from your Aster DEX dashboard</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="apiSecret">API Secret</label>
+                    <input
+                        type="password"
+                        id="apiSecret"
+                        name="apiSecret"
+                        placeholder="Enter your API secret"
+                        required
+                        minlength="20"
+                    >
+                    <small>Keep this secret safe - it will be encrypted and stored locally</small>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="btn btn-secondary" onclick="testConnection()">
+                        Test Connection
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const REFERRAL_LINK = 'https://www.asterdex.com/en/referral/3TixB2';
+
+        // Check if .env exists on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('/api/check-env');
+                const data = await response.json();
+
+                if (data.exists && data.configured) {
+                    document.getElementById('existingConfig').classList.remove('hidden');
+
+                    // Show masked API key if configured
+                    if (data.apiKeyPreview) {
+                        originalApiKeyPreview = data.apiKeyPreview;  // Store the preview
+                        document.getElementById('apiKey').value = data.apiKeyPreview;
+                        document.getElementById('apiKey').setAttribute('placeholder', 'API Key is configured');
+
+                        // Add note about existing key
+                        const keyField = document.getElementById('apiKey').parentElement;
+                        const existingNote = keyField.querySelector('.existing-note');
+                        if (!existingNote) {
+                            const note = document.createElement('small');
+                            note.className = 'existing-note';
+                            note.style.color = '#28a745';
+                            note.style.fontWeight = 'bold';
+                            note.textContent = '✅ API Key is already configured (partially masked for security)';
+                            keyField.appendChild(note);
+                        }
+
+                        // Clear the field when user clicks on it to enter new value
+                        document.getElementById('apiKey').addEventListener('focus', function() {
+                            if (this.value === data.apiKeyPreview) {
+                                this.value = '';
+                                this.type = 'text';
+                            }
+                        });
+                    }
+
+                    if (data.apiSecretPreview) {
+                        originalApiSecretPreview = data.apiSecretPreview;  // Store the preview
+                        document.getElementById('apiSecret').value = data.apiSecretPreview;
+                        document.getElementById('apiSecret').setAttribute('placeholder', 'API Secret is configured');
+
+                        // Add note about existing secret
+                        const secretField = document.getElementById('apiSecret').parentElement;
+                        const existingNote = secretField.querySelector('.existing-note');
+                        if (!existingNote) {
+                            const note = document.createElement('small');
+                            note.className = 'existing-note';
+                            note.style.color = '#28a745';
+                            note.style.fontWeight = 'bold';
+                            note.textContent = '✅ API Secret is already configured (fully hidden for security)';
+                            secretField.appendChild(note);
+                        }
+
+                        // Clear the field when user clicks on it to enter new value
+                        document.getElementById('apiSecret').addEventListener('focus', function() {
+                            if (this.value === data.apiSecretPreview) {
+                                this.value = '';
+                            }
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking .env:', error);
+            }
+        });
+
+        function openReferralLink() {
+            window.open(REFERRAL_LINK, '_blank');
+            showStatus('Opened Aster DEX in a new tab. Follow the instructions to get your API keys.', 'success');
+        }
+
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            statusEl.classList.remove('hidden');
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusEl.classList.add('hidden');
+                }, 5000);
+            }
+        }
+
+        let originalApiKeyPreview = '';
+        let originalApiSecretPreview = '';
+
+        async function testConnection() {
+            let apiKey = document.getElementById('apiKey').value;
+            let apiSecret = document.getElementById('apiSecret').value;
+
+            // Check if we're using masked values (existing credentials)
+            const isUsingExistingKey = apiKey === originalApiKeyPreview;
+            const isUsingExistingSecret = apiSecret === originalApiSecretPreview;
+
+            if (isUsingExistingKey || isUsingExistingSecret) {
+                // Test with existing credentials on the server side
+                showStatus('Testing connection with existing credentials...', 'info');
+
+                try {
+                    const response = await fetch('/api/test-connection', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            useExisting: true,
+                            apiKey: !isUsingExistingKey ? apiKey : null,
+                            apiSecret: !isUsingExistingSecret ? apiSecret : null
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        showStatus('✅ Connection successful! API credentials are valid.', 'success');
+                    } else {
+                        showStatus(`❌ Connection failed: ${data.error}`, 'error');
+                    }
+                } catch (error) {
+                    showStatus(`❌ Error testing connection: ${error.message}`, 'error');
+                }
+                return;
+            }
+
+            if (!apiKey || !apiSecret) {
+                showStatus('Please enter both API Key and Secret', 'error');
+                return;
+            }
+
+            showStatus('Testing connection...', 'info');
+
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ apiKey, apiSecret })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showStatus('✅ Connection successful! API credentials are valid.', 'success');
+                } else {
+                    showStatus(`❌ Connection failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Error testing connection: ${error.message}`, 'error');
+            }
+        }
+
+        document.getElementById('setupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            let apiKey = document.getElementById('apiKey').value;
+            let apiSecret = document.getElementById('apiSecret').value;
+
+            // Check if we're using masked values (don't save if they haven't changed)
+            if (apiKey === originalApiKeyPreview && apiSecret === originalApiSecretPreview) {
+                showStatus('No changes made to existing credentials', 'info');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+                return;
+            }
+
+            // If only one field has changed, keep the existing value for the other
+            if (apiKey === originalApiKeyPreview) {
+                apiKey = null;  // Signal to keep existing
+            }
+            if (apiSecret === originalApiSecretPreview) {
+                apiSecret = null;  // Signal to keep existing
+            }
+
+            if (!apiKey && !apiSecret) {
+                showStatus('No changes made to existing credentials', 'info');
+                return;
+            }
+
+            showStatus('Saving configuration...', 'info');
+
+            try {
+                const response = await fetch('/api/save-env', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        apiKey: apiKey || undefined,
+                        apiSecret: apiSecret || undefined,
+                        keepExisting: true
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showStatus('✅ Configuration saved successfully!', 'success');
+
+                    // Log the message to console as requested
+                    console.log('======================================================================');
+                    console.log('ASTER LIQUIDATION HUNTER BOT - SETUP WIZARD');
+                    console.log('======================================================================');
+                    console.log('');
+                    console.log('To use this bot, you need API credentials from Aster DEX.');
+                    console.log('');
+                    console.log('Get your API key using this referral link:');
+                    console.log('   https://www.asterdex.com/en/referral/3TixB2');
+                    console.log('');
+                    console.log('   Steps:');
+                    console.log('   1. Open the link above in your browser');
+                    console.log('   2. Create an account or login to Aster DEX');
+                    console.log('   3. Navigate to API Management in your dashboard');
+                    console.log('   4. Create a new API key with trading permissions');
+                    console.log('   5. Copy the API Key and Secret (keep them safe!)');
+
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    showStatus(`❌ Failed to save configuration: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Error saving configuration: ${error.message}`, 'error');
+            }
+        });
+    </script>
+</body>
+</html>
