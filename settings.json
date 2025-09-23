@@ -18,7 +18,11 @@
     "max_tranches_per_symbol_side": 5,
     "open_orders_warning_threshold": 150,
     "max_stop_orders_per_symbol": 8,
-    "enable_order_consolidation": true
+    "enable_order_consolidation": true,
+    "batch_orders": true,
+    "buffer_liquidations": true,
+    "liquidation_buffer_ms": 100,
+    "order_batch_window_ms": 200
   },
   "symbols": {
     "BTCUSDT": {

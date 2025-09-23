@@ -3,6 +3,7 @@ from src.utils.config import config
 from src.database.db import get_volume_in_window, get_usdt_volume_in_window, insert_trade, get_db_conn, insert_order_relationship
 from src.utils.auth import make_authenticated_request
 from src.utils.utils import log
+from src.core.order_batcher import OrderBatcher, LiquidationBuffer
 import json
 import math
 import time
@@ -15,9 +16,85 @@ symbol_specs = {}
 # Minimum notional value for orders (exchange requirement)
 MIN_NOTIONAL = 5.0
 
+# Initialize order batcher for efficient API usage
+order_batcher = OrderBatcher(batch_window_ms=200, max_batch_size=5)
+
 def get_opposite_side(side):
     """Get opposite side for OPPOSITE mode."""
     return 'SELL' if side == 'BUY' else 'BUY'
+
+async def place_batch_orders(orders_batch):
+    """
+    Place multiple orders in a single API call.
+
+    Args:
+        orders_batch: List of order dictionaries (max 5)
+
+    Returns:
+        Response from batch order API or None if failed
+    """
+    if not orders_batch:
+        return None
+
+    if len(orders_batch) > 5:
+        log.warning(f"Batch size {len(orders_batch)} exceeds limit of 5. Truncating.")
+        orders_batch = orders_batch[:5]
+
+    try:
+        # Prepare batch orders data
+        batch_data = {
+            'batchOrders': json.dumps(orders_batch),
+            'recvWindow': 5000
+        }
+
+        url = f"{config.BASE_URL}/fapi/v1/batchOrders"
+        response = make_authenticated_request('POST', url, data=batch_data)
+
+        if response.status_code == 200:
+            results = response.json()
+
+            # Log each order result
+            for i, result in enumerate(results):
+                if 'orderId' in result:
+                    order = orders_batch[i]
+                    log.info(f"[BATCH] Order placed: {order['symbol']} {order['side']} "
+                           f"{order.get('quantity', 'N/A')} @ {order.get('price', 'MARKET')}")
+                else:
+                    log.error(f"[BATCH] Order failed: {result}")
+
+            return results
+        else:
+            log.error(f"Batch order request failed: {response.text}")
+            return None
+
+    except Exception as e:
+        log.error(f"Error placing batch orders: {e}")
+        return None
+
+async def send_batch_orders(batch):
+    """
+    Callback function for order batcher to send batch orders.
+
+    Args:
+        batch: List of orders to send
+    """
+    if len(batch) == 1:
+        # Single order, send normally
+        order = batch[0]
+        url = f"{config.BASE_URL}/fapi/v1/order"
+        response = make_authenticated_request('POST', url, data=order)
+
+        if response.status_code == 200:
+            result = response.json()
+            log.info(f"[SINGLE] Order placed: {order['symbol']} {order['side']} "
+                   f"{order.get('quantity', 'N/A')} @ {order.get('price', 'MARKET')}")
+            return [result]
+        else:
+            log.error(f"Single order failed: {response.text}")
+            return None
+    else:
+        # Multiple orders, use batch API
+        return await place_batch_orders(batch)
 
 async def fetch_exchange_info():
     """Fetch and cache exchange information for all symbols."""
@@ -488,8 +565,21 @@ def calculate_sl_price(entry_price, side, sl_pct, position_side=None):
         else:  # SELL
             return entry_price * (1 + (sl_pct / 100.0))
 
-async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1, symbol_config=None):
-    """Place main order and schedule TP/SL for after fill."""
+async def place_order(symbol, side, qty, last_price, order_type='LIMIT', position_side='BOTH', offset_pct=0.1, symbol_config=None, use_batching=True):
+    """
+    Place main order and schedule TP/SL for after fill.
+
+    Args:
+        symbol: Trading symbol
+        side: BUY or SELL
+        qty: Order quantity
+        last_price: Reference price
+        order_type: Order type (LIMIT only)
+        position_side: LONG, SHORT, or BOTH
+        offset_pct: Price offset percentage
+        symbol_config: Symbol configuration
+        use_batching: Whether to use order batching
+    """
     # Get fresh database connection for this operation
     conn = get_db_conn()
 
@@ -536,6 +626,21 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                 log.info("Would place TP/SL orders after main order fills")
                 await place_tp_sl_orders(main_order_id, entry_price, tp_sl_params)
             return main_order_id
+
+        # Check if we should use batching
+        if use_batching and config.GLOBAL_SETTINGS.get('batch_orders', True):
+            # Add to batch queue
+            main_order['priority'] = 'critical'  # Main orders are critical
+            if order_batcher.add_order(main_order):
+                log.debug(f"Added {symbol} order to batch queue")
+                # Process batch immediately for critical orders
+                batches = order_batcher.get_ready_batches()
+                if batches:
+                    for batch in batches:
+                        await send_batch_orders(batch)
+                return None  # Batch processing handles the order
+            else:
+                log.warning(f"Batch queue full for {symbol}, sending directly")
 
         # Make actual request - place main order only
         # Debug: Log exactly what we're sending

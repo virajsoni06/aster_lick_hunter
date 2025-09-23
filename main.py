@@ -5,7 +5,7 @@ import sys
 from src.utils.config import config
 from src.database.db import init_db, get_db_conn
 from src.core.streamer import LiquidationStreamer
-from src.core.trader import init_symbol_settings, evaluate_trade
+from src.core.trader import init_symbol_settings, evaluate_trade, order_batcher, send_batch_orders
 from src.core.order_cleanup import OrderCleanup
 from src.core.user_stream import UserDataStream
 from src.utils.utils import log
@@ -107,6 +107,12 @@ def main():
         user_stream_task = asyncio.create_task(user_stream.start())
         log.info("User data stream started for position monitoring")
 
+        # Start batch order processor if enabled
+        batch_processor_task = None
+        if config.GLOBAL_SETTINGS.get('batch_orders', True):
+            batch_processor_task = asyncio.create_task(order_batcher.start_processor(send_batch_orders))
+            log.info("Order batch processor started")
+
         # Create streamer and handler
         async def message_handler(symbol, side, qty, price):
             """Handle incoming liquidation messages."""
@@ -138,6 +144,15 @@ def main():
 
             # Stop order cleanup first (non-async)
             order_cleanup.stop()
+
+            # Stop batch processor if running
+            if batch_processor_task and not batch_processor_task.done():
+                await order_batcher.shutdown()
+                batch_processor_task.cancel()
+                try:
+                    await batch_processor_task
+                except asyncio.CancelledError:
+                    pass
 
             # Cancel and wait for user stream task
             if not user_stream_task.done():

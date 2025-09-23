@@ -4,6 +4,7 @@ import websockets
 from src.utils.config import config
 from src.database.db import insert_liquidation, get_db_conn, get_usdt_volume_in_window, get_volume_in_window
 from src.utils.utils import log
+from src.core.order_batcher import LiquidationBuffer
 
 class LiquidationStreamer:
     def __init__(self, message_handler):
@@ -11,6 +12,11 @@ class LiquidationStreamer:
         self.stream = config.LIQUIDATION_STREAM
         self.message_handler = message_handler
         # Database connection no longer stored - use fresh connections instead
+
+        # Initialize liquidation buffer for batch processing
+        buffer_window_ms = config.GLOBAL_SETTINGS.get('liquidation_buffer_ms', 100)
+        self.liquidation_buffer = LiquidationBuffer(buffer_window_ms=buffer_window_ms)
+        self.batch_processor_task = None
 
     async def subscribe(self, websocket):
         """Send subscription message to include the stream."""
@@ -103,6 +109,29 @@ class LiquidationStreamer:
         # Log liquidation with color coding and volume info
         log.liquidation(symbol, side, qty, price, usdt_value, volume_info)
 
-        # Pass to message handler (e.g., for trading decisions)
-        if self.message_handler:
-            await self.message_handler(symbol, side, qty, price)
+        # Add to buffer for batch processing if enabled
+        if config.GLOBAL_SETTINGS.get('buffer_liquidations', True):
+            self.liquidation_buffer.add_liquidation(symbol, side, qty, price)
+
+            # Process batch if ready
+            batch = self.liquidation_buffer.get_batch()
+            if batch:
+                await self.process_liquidation_batch(batch)
+        else:
+            # Pass to message handler directly (no batching)
+            if self.message_handler:
+                await self.message_handler(symbol, side, qty, price)
+
+    async def process_liquidation_batch(self, batch):
+        """Process a batch of liquidations."""
+        log.debug(f"Processing batch of {len(batch)} liquidations")
+
+        # Process each liquidation in the batch
+        tasks = []
+        for liq in batch:
+            if self.message_handler:
+                tasks.append(self.message_handler(liq['symbol'], liq['side'], liq['qty'], liq['price']))
+
+        # Process all liquidations concurrently
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)

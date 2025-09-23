@@ -29,9 +29,19 @@ class RateLimiter:
             buffer_pct: Safety buffer percentage (0.1 = 10% buffer)
             reserve_pct: Reserved capacity for critical requests (0.2 = 20% reserved)
         """
+        # Store initial settings
+        self.initial_buffer_pct = buffer_pct
+        self.initial_reserve_pct = reserve_pct
+
         # Apply safety buffer to limits
         self.request_limit = int(2400 * (1 - buffer_pct))
         self.order_limit = int(1200 * (1 - buffer_pct))
+
+        # Burst mode settings
+        self.burst_mode = False
+        self.burst_mode_until = None
+        self.burst_buffer_pct = 0.05  # Only 5% buffer in burst mode
+        self.burst_reserve_pct = 0.1  # Only 10% reserve in burst mode
 
         # Reserve capacity for critical requests
         self.reserve_pct = reserve_pct
@@ -56,6 +66,15 @@ class RateLimiter:
         self.consecutive_429s = 0
         self.is_banned = False
         self.ban_until = None
+
+        # Queue management for deferred requests
+        self.request_queue = deque()
+        self.order_queue = deque()
+        self.max_queue_size = 100
+
+        # High traffic detection
+        self.recent_request_times = deque(maxlen=100)
+        self.high_traffic_threshold = 50  # requests per 10 seconds
 
         logger.info(f"Rate limiter initialized with limits: requests={self.request_limit}/min (normal={self.normal_request_limit}, reserved={self.reserved_request_capacity}), orders={self.order_limit}/min")
 
@@ -232,6 +251,9 @@ class RateLimiter:
             for _ in range(weight):
                 self.request_times.append(current_time)
 
+            # Check for high traffic
+            self.detect_high_traffic()
+
     def record_order(self) -> None:
         """
         Record that an order was placed.
@@ -255,6 +277,175 @@ class RateLimiter:
         if not can_proceed and wait_time:
             logger.info(f"Rate limit reached (priority:{priority}). Waiting {wait_time:.1f}s...")
             time.sleep(wait_time)
+
+    def detect_high_traffic(self) -> bool:
+        """
+        Detect if we're in a high traffic situation.
+
+        Returns:
+            True if traffic is high, False otherwise
+        """
+        current_time = time.time()
+        self.recent_request_times.append(current_time)
+
+        # Count requests in last 10 seconds
+        ten_seconds_ago = current_time - 10
+        recent_count = sum(1 for t in self.recent_request_times if t > ten_seconds_ago)
+
+        is_high = recent_count >= self.high_traffic_threshold
+
+        # Auto-enable burst mode if traffic is high and not already enabled
+        if is_high and not self.burst_mode:
+            logger.info(f"High traffic detected: {recent_count} requests in 10s")
+            self.enable_burst_mode(duration_seconds=60)
+
+        return is_high
+
+    def enable_burst_mode(self, duration_seconds: int = 60) -> None:
+        """
+        Enable burst mode for handling high liquidation traffic.
+
+        Args:
+            duration_seconds: Duration to maintain burst mode
+        """
+        with self.lock:
+            self.burst_mode = True
+            self.burst_mode_until = time.time() + duration_seconds
+
+            # Increase limits for burst mode
+            self.request_limit = int(2400 * (1 - self.burst_buffer_pct))
+            self.order_limit = int(1200 * (1 - self.burst_buffer_pct))
+
+            # Reduce reserved capacity during burst
+            self.reserved_request_capacity = int(self.request_limit * self.burst_reserve_pct)
+            self.reserved_order_capacity = int(self.order_limit * self.burst_reserve_pct)
+            self.normal_request_limit = self.request_limit - self.reserved_request_capacity
+            self.normal_order_limit = self.order_limit - self.reserved_order_capacity
+
+            logger.info(f"BURST MODE ENABLED for {duration_seconds}s. Limits: requests={self.request_limit}, orders={self.order_limit}")
+
+    def disable_burst_mode(self) -> None:
+        """
+        Disable burst mode and restore normal limits.
+        """
+        with self.lock:
+            self.burst_mode = False
+            self.burst_mode_until = None
+
+            # Restore normal limits
+            self.request_limit = int(2400 * (1 - self.initial_buffer_pct))
+            self.order_limit = int(1200 * (1 - self.initial_buffer_pct))
+
+            # Restore normal reserved capacity
+            self.reserved_request_capacity = int(self.request_limit * self.initial_reserve_pct)
+            self.reserved_order_capacity = int(self.order_limit * self.initial_reserve_pct)
+            self.normal_request_limit = self.request_limit - self.reserved_request_capacity
+            self.normal_order_limit = self.order_limit - self.reserved_order_capacity
+
+            logger.info("BURST MODE DISABLED. Restored normal rate limits.")
+
+    def check_burst_mode(self) -> None:
+        """
+        Check if burst mode should be disabled.
+        """
+        if self.burst_mode and self.burst_mode_until:
+            if time.time() > self.burst_mode_until:
+                self.disable_burst_mode()
+
+    def queue_request(self, request_info: Dict, is_order: bool = False, priority: str = 'normal') -> bool:
+        """
+        Queue a request for later processing.
+
+        Args:
+            request_info: Information about the request
+            is_order: Whether this is an order request
+            priority: Request priority level
+
+        Returns:
+            True if queued successfully, False if queue is full
+        """
+        with self.lock:
+            queue = self.order_queue if is_order else self.request_queue
+
+            if len(queue) >= self.max_queue_size:
+                logger.warning(f"{'Order' if is_order else 'Request'} queue full ({self.max_queue_size} items)")
+                return False
+
+            # Add with priority sorting
+            queue_item = {
+                'info': request_info,
+                'timestamp': time.time(),
+                'priority': priority,
+                'is_order': is_order
+            }
+
+            # Insert based on priority
+            if priority == 'critical':
+                queue.appendleft(queue_item)
+            else:
+                queue.append(queue_item)
+
+            logger.debug(f"Queued {'order' if is_order else 'request'} with priority '{priority}'. Queue size: {len(queue)}")
+            return True
+
+    def get_queued_request(self, is_order: bool = False) -> Optional[Dict]:
+        """
+        Get next queued request if rate limits allow.
+
+        Args:
+            is_order: Whether to get from order queue
+
+        Returns:
+            Request info if available and rate limits allow
+        """
+        with self.lock:
+            self.check_burst_mode()
+
+            queue = self.order_queue if is_order else self.request_queue
+
+            if not queue:
+                return None
+
+            # Check if we can process the request
+            next_item = queue[0]
+            priority = next_item.get('priority', 'normal')
+
+            if is_order:
+                can_proceed, _ = self.can_place_order(priority=priority)
+            else:
+                can_proceed, _ = self.can_make_request(weight=1, priority=priority)
+
+            if can_proceed:
+                return queue.popleft()
+
+            return None
+
+    def process_queue(self) -> int:
+        """
+        Process queued requests that can be sent now.
+
+        Returns:
+            Number of requests processed
+        """
+        processed = 0
+
+        # Process order queue
+        while True:
+            item = self.get_queued_request(is_order=True)
+            if not item:
+                break
+            processed += 1
+            logger.debug(f"Processing queued order: {item['info'].get('symbol', 'unknown')}")
+
+        # Process request queue
+        while True:
+            item = self.get_queued_request(is_order=False)
+            if not item:
+                break
+            processed += 1
+            logger.debug("Processing queued request")
+
+        return processed
 
     def get_usage_stats(self) -> Dict[str, any]:
         """
@@ -280,5 +471,9 @@ class RateLimiter:
                 'order_usage_pct': (recent_orders / self.order_limit * 100) if self.order_limit > 0 else 0,
                 'is_banned': self.is_banned,
                 'ban_until': self.ban_until,
-                'consecutive_429s': self.consecutive_429s
+                'consecutive_429s': self.consecutive_429s,
+                'burst_mode': self.burst_mode,
+                'burst_mode_until': self.burst_mode_until,
+                'request_queue_size': len(self.request_queue),
+                'order_queue_size': len(self.order_queue)
             }
