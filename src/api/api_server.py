@@ -767,6 +767,18 @@ def get_position_details(symbol, side):
     """Get detailed position information including tranches and orders."""
     conn = get_db_connection()
 
+    # Get exchange position data for consistent PNL calculation with main dashboard
+    exchange_position = None
+    try:
+        response = make_authenticated_request('GET', f'{BASE_URL}/fapi/v2/positionRisk')
+        if response.status_code == 200:
+            positions = response.json()
+            # Find the specific position
+            exchange_position = next((p for p in positions if p['symbol'] == symbol and float(p.get('positionAmt', 0)) != 0), None)
+    except Exception as e:
+        print(f"Error fetching exchange position for {symbol}: {e}")
+
+    # Get tranche data from database for detailed breakdown
     # Check if position_tranches table exists
     cursor = conn.execute('''
         SELECT name FROM sqlite_master
@@ -774,7 +786,7 @@ def get_position_details(symbol, side):
     ''')
 
     if cursor.fetchone():
-        # Get all tranches for this position with calculated PNL
+        # Get all tranches for this position
         cursor = conn.execute('''
             SELECT pt.*,
                    COALESCE(MAX(t.filled_qty), 0) as filled_qty,
@@ -788,116 +800,23 @@ def get_position_details(symbol, side):
             ORDER BY pt.tranche_id ASC
         ''', (symbol, side))
 
-        # Get current market price from exchange for accurate PNL
-        current_price = None
-        try:
-            import requests
-            ticker_response = requests.get(f'https://fapi.asterdex.com/fapi/v1/ticker/price?symbol={symbol}')
-            if ticker_response.status_code == 200:
-                current_price = float(ticker_response.json()['price'])
-        except Exception as e:
-            print(f"Error fetching current price: {e}")
+        tranches = [dict(row) for row in cursor.fetchall()]
 
-        # Get open orders from exchange for this symbol
-        open_orders = []
-        tp_orders = []
-        sl_orders = []
-        try:
-            from src.utils.auth import make_authenticated_request
-            from src.utils.config import config as cfg
-
-            # Fetch open orders from exchange
-            response = make_authenticated_request('GET', f'{cfg.BASE_URL}/fapi/v1/openOrders', {'symbol': symbol})
-            if response.status_code == 200:
-                all_symbol_orders = response.json()
-
-                # Filter and categorize orders
-                for order in all_symbol_orders:
-                    order_type = order.get('type', '')
-                    order_side = order.get('side')
-                    position_side = order.get('positionSide', 'BOTH')
-
-                    # Check if order is for this position side
-                    if position_side == side or (position_side == 'BOTH' and side == 'BOTH'):
-                        order_info = {
-                            'order_id': str(order.get('orderId')),
-                            'type': order_type,
-                            'side': order_side,
-                            'quantity': float(order.get('origQty', 0)),
-                            'price': order.get('price', order.get('stopPrice', '0'))
-                        }
-                        open_orders.append(order_info)
-
-                        # Categorize as TP or SL
-                        if 'TAKE_PROFIT' in order_type or (order_type == 'LIMIT' and order_side != ('BUY' if side == 'LONG' else 'SELL')):
-                            tp_orders.append(order_info)
-                        elif 'STOP' in order_type and 'TAKE_PROFIT' not in order_type:
-                            sl_orders.append(order_info)
-        except Exception as e:
-            print(f"Error fetching open orders from exchange: {e}")
-
-        tranches = []
-        for row in cursor.fetchall():
-            tranche_dict = dict(row)
-
-            # Override database TP/SL with actual exchange orders
-            # Match orders based on quantity (assuming one TP/SL per tranche quantity)
-            tranche_qty = tranche_dict.get('total_quantity', 0)
-
-            # Find matching TP order from exchange
-            tranche_dict['tp_order_id'] = None
-            for tp in tp_orders:
-                # Allow some tolerance for quantity matching (within 5%)
-                if abs(tp['quantity'] - tranche_qty) / tranche_qty < 0.05 if tranche_qty > 0 else False:
-                    tranche_dict['tp_order_id'] = tp['order_id']
-                    break
-
-            # Find matching SL order from exchange
-            tranche_dict['sl_order_id'] = None
-            for sl in sl_orders:
-                # Allow some tolerance for quantity matching (within 5%)
-                if abs(sl['quantity'] - tranche_qty) / tranche_qty < 0.05 if tranche_qty > 0 else False:
-                    tranche_dict['sl_order_id'] = sl['order_id']
-                    break
-
-            # Calculate unrealized PNL if we have a current price
-            if 'total_quantity' in tranche_dict and tranche_dict['total_quantity'] > 0:
-                qty = tranche_dict['total_quantity']
-                entry_price = tranche_dict['avg_entry_price']
-
-                # Use exchange price if available, otherwise try to get from recent trades
-                if current_price:
-                    price_to_use = current_price
-                else:
-                    # Fallback to latest trade price
-                    cursor2 = conn.execute('''
-                        SELECT price FROM trades
-                        WHERE symbol = ?
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                    ''', (symbol,))
-                    price_row = cursor2.fetchone()
-                    price_to_use = price_row[0] if price_row else entry_price
-
-                if side == 'LONG':
-                    tranche_dict['unrealized_pnl'] = (price_to_use - entry_price) * qty
-                else:  # SHORT
-                    tranche_dict['unrealized_pnl'] = (entry_price - price_to_use) * qty
-
-                tranche_dict['current_price'] = price_to_use
-            else:
-                tranche_dict['unrealized_pnl'] = 0.0
-
-            tranches.append(tranche_dict)
+        # If we have exchange position data, don't calculate tranche-level PNL
+        # since the exchange provides accurate total PNL only
+        if exchange_position:
+            # Set tranche pnl to 0 since we can't accurately distribute total exchange PNL across tranches
+            for tranche in tranches:
+                tranche['unrealized_pnl'] = 0.0
     else:
         tranches = []
 
     # Get all related orders from order_relationships
     cursor = conn.execute('''
         SELECT * FROM order_relationships
-        WHERE symbol = ?
+        WHERE symbol = ? AND (position_side = ? OR position_side IS NULL)
         ORDER BY created_at DESC
-    ''', (symbol,))
+    ''', (symbol, side))
 
     all_order_rels = [dict(row) for row in cursor.fetchall()]
 
@@ -930,31 +849,72 @@ def get_position_details(symbol, side):
 
     trades = [dict(row) for row in cursor.fetchall()]
 
-    # Get current order status for all orders
-    order_ids = []
-    for rel in order_relationships:
-        if rel.get('main_order_id'):
-            order_ids.append(rel['main_order_id'])
-        if rel.get('tp_order_id'):
-            order_ids.append(rel['tp_order_id'])
-        if rel.get('sl_order_id'):
-            order_ids.append(rel['sl_order_id'])
-
+    # Get current order status for all orders from exchange API
     order_statuses = {}
-    if order_ids:
-        placeholders = ','.join(['?' for _ in order_ids])
-        cursor = conn.execute(f'''
-            SELECT * FROM order_status
-            WHERE order_id IN ({placeholders})
-        ''', order_ids)
+    if API_KEY and API_SECRET:
+        try:
+            from src.utils.auth import make_authenticated_request
 
-        for row in cursor.fetchall():
-            order_statuses[row['order_id']] = dict(row)
+            # Only fetch statuses for currently open TP/SL or LIMIT orders for this symbol
+            # This completely avoids querying old/stale orders that no longer exist
+            try:
+                response = make_authenticated_request('GET', f'{BASE_URL}/fapi/v1/openOrders', {'symbol': symbol})
+                if response.status_code == 200:
+                    open_orders_data = response.json()
+                    # Get status for all currently open orders (TP/SL and LIMIT)
+                    for order in open_orders_data:
+                        order_id = str(order.get('orderId'))
+                        order_type = order.get('type', '')
+                        order_status = order.get('status', '')
 
-    # Calculate aggregate position data from tranches only
-    current_positions = []  # No positions table anymore, use tranches only
+                        # Only include orders that are TP/SL or LIMIT and are actually OPEN/NEW
+                        if order_status in ['NEW', 'PARTIALLY_FILLED'] and \
+                           ('TAKE_PROFIT' in order_type or 'STOP' in order_type or order_type == 'LIMIT'):
+                            order_statuses[order_id] = {
+                                'order_id': order_id,
+                                'status': order_status,
+                                'quantity': float(order.get('origQty', 0)),
+                                'price': order.get('price'),
+                                'side': order.get('side'),
+                                'type': order.get('type'),
+                                'executed_qty': float(order.get('executedQty', 0))
+                            }
+                            print(f"Found active {order_type} order {order_id} with status {order_status}")
+                else:
+                    print(f"Error fetching open orders: {response.status_code}")
 
-    if tranches:
+            except Exception as e:
+                print(f"Error fetching open orders for symbol {symbol}: {e}")
+
+            # Do NOT query any old/completed orders - only current open orders matter for status display
+            if not order_statuses:
+                print(f"No active TP/SL/LIMIT orders found for {symbol} - no order status lookup needed")
+
+        except Exception as e:
+            print(f"Error fetching order statuses from exchange: {e}")
+
+    # Calculate aggregate position data using exchange API for consistency with main dashboard
+    if exchange_position:
+        # Use real exchange position data for consistent PNL calculation
+        entry_price = float(exchange_position.get('entryPrice', 0))
+        mark_price = float(exchange_position.get('markPrice', 0))
+        position_amt = float(exchange_position.get('positionAmt', 0))
+        leverage = float(exchange_position.get('leverage', 10))
+
+        total_quantity = abs(position_amt)
+        avg_entry_price = entry_price
+
+        # Use the same PNL calculation as main dashboard (consistent)
+        if position_amt > 0:  # Long
+            total_unrealized_pnl = (mark_price - entry_price) * position_amt
+        elif position_amt < 0:  # Short
+            total_unrealized_pnl = (entry_price - mark_price) * abs(position_amt)
+        else:
+            total_unrealized_pnl = 0
+
+        total_margin = float(exchange_position.get('initialMargin', 0))
+    elif tranches:
+        # Fallback to tranche calculations if exchange data unavailable
         total_quantity = sum(t['total_quantity'] for t in tranches)
         if total_quantity > 0:
             avg_entry_price = sum(t['avg_entry_price'] * t['total_quantity'] for t in tranches) / total_quantity
@@ -972,7 +932,7 @@ def get_position_details(symbol, side):
             pass
         total_margin = (total_quantity * avg_entry_price) / leverage if leverage > 0 else 0
     else:
-        # No tranches, no position
+        # No position data
         total_quantity = 0
         avg_entry_price = 0
         total_unrealized_pnl = 0
@@ -991,11 +951,11 @@ def get_position_details(symbol, side):
             'num_tranches': len(tranches)
         },
         'tranches': tranches,
-        'open_orders': open_orders if 'open_orders' in locals() else [],
+        'open_orders': [],
         'order_relationships': order_relationships,
         'order_statuses': order_statuses,
         'trades': trades,
-        'current_positions': current_positions
+        'current_positions': []
     })
 
 @app.route('/api/config/defaults')

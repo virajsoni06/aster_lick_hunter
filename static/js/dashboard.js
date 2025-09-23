@@ -231,9 +231,7 @@ class Dashboard {
             <td>${position.leverage}x</td>
         `;
 
-        // Make row clickable for position details
-        row.style.cursor = 'pointer';
-        row.addEventListener('click', () => this.showPositionDetails(position.symbol, position.side));
+        // Position row - not clickable for details (user requested removal)
 
         return row;
     }
