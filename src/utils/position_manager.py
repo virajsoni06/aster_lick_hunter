@@ -469,16 +469,6 @@ class PositionManager:
                         'pnl': p.unrealized_pnl
                     })
 
-            # Log detailed breakdown if total margin seems high
-            if total_margin > 50:
-                logger.info(f"[DEBUG] High collateral detected: ${total_margin:.2f}")
-                for detail in position_details:
-                    logger.info(f"  - {detail['key']} T{detail['tranche_id']}: "
-                              f"qty={detail['quantity']:.4f} @ ${detail['entry_price']:.4f}, "
-                              f"value=${detail['position_value']:.2f}, "
-                              f"leverage={detail['leverage']}x, "
-                              f"margin=${detail['margin_used']:.2f}")
-
             return {
                 'total_tranches': total_tranches,
                 'position_keys': list(self.positions.keys()),

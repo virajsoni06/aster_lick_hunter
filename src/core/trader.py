@@ -507,8 +507,6 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
         log.debug(f"Symbol {symbol} not in config")
         return
 
-    log.info(f"[DEBUG] {symbol} passed config check")
-
     # Get symbol-specific settings
     symbol_config = config.SYMBOL_SETTINGS[symbol]
 
@@ -544,7 +542,6 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
 
     position_type = "LONG" if trade_side == "BUY" else "SHORT"
     log.threshold_met(symbol, volume, threshold)
-    log.info(f"[DEBUG] Evaluating {position_type} trade for {symbol} with volume {volume:.2f}, threshold {threshold}")
 
     # Catch any exception that stops execution
     try:
@@ -553,12 +550,10 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
             stats = position_manager.get_stats()
             total_collateral = stats.get('total_collateral_used', 0)
             pending = stats.get('pending_collateral', {}).get(symbol, 0)
-            log.info(f"[DEBUG] PositionManager: total_collateral=${total_collateral:.2f}, {symbol}_pending=${pending:.2f}, max_total=${position_manager.max_total_exposure_usdt}, {symbol}_max=${position_manager.max_position_usdt_per_symbol.get(symbol, 'inf')}")
         else:
-            log.warning("[DEBUG] PositionManager is None! Using fallback margin check")
+            log.warning("PositionManager is None! Using fallback margin check")
             # Log current margin used via API for fallback logic
             current_margin = get_current_position_value(symbol)
-            log.info(f"[DEBUG] Current margin for {symbol}: ${current_margin:.2f}, symbol_max=${symbol_config.get('max_position_usdt', 'inf')}")
 
         # Calculate position size from collateral and leverage
         trade_collateral_usdt = symbol_config.get('trade_value_usdt', 10)  # Collateral per trade
@@ -587,13 +582,10 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
             # In one-way mode, always use BOTH
             position_side = 'BOTH'
 
-        log.info(f"[DEBUG] Position size validated: ${position_size_usdt:.2f}, position_side: {position_side}")
-
         # Check position limits using PositionManager
         if position_manager:
             can_open, reason = position_manager.can_open_position(symbol, position_size_usdt, leverage)
             if not can_open:
-                log.warning(f"[DEBUG] Position manager rejection for {symbol}: {reason}")
                 log.warning(f"Position manager rejected trade: {reason}")
                 conn.close()
                 return
@@ -607,32 +599,26 @@ async def evaluate_trade(symbol, liquidation_side, qty, price):
             new_trade_margin = position_size_usdt / leverage  # Convert notional to margin
 
             if current_margin_used + new_trade_margin > max_position_usdt:
-                log.warning(f"[DEBUG] Would exceed max margin for {symbol}: {current_margin_used:.2f} + {new_trade_margin:.2f} > {max_position_usdt:.2f} USDT")
                 log.warning(f"Would exceed max margin for {symbol}: current margin {current_margin_used:.2f} + new {new_trade_margin:.2f} > max {max_position_usdt:.2f} USDT")
                 conn.close()
                 return
-
-        log.info(f"[DEBUG] Position limits check passed for {symbol}")
 
         # Calculate quantity from position size
         trade_qty = calculate_quantity_from_usdt(symbol, position_size_usdt, price)
 
         if trade_qty is None or trade_qty <= 0:
-            log.error(f"[DEBUG] Quantity calculation failed for {symbol}: qty={trade_qty}, position_size={position_size_usdt}, price={price}")
             log.error(f"Could not calculate valid quantity for {symbol} with {trade_collateral_usdt} USDT collateral (${position_size_usdt} position)")
             conn.close()
             return
-
-        log.info(f"[DEBUG] Quantity calculated successfully for {symbol}: {trade_qty}")
 
         offset_pct = symbol_config.get('price_offset_pct', 0.1)
         await place_order(symbol, trade_side, trade_qty, price, 'LIMIT', position_side, offset_pct, symbol_config)
         conn.close()  # Close the database connection
 
     except Exception as e:
-        log.error(f"[DEBUG] Exception in evaluate_trade after threshold for {symbol}: {e}")
         import traceback
-        log.error(f"[DEBUG] Exception traceback: {traceback.format_exc()}")    
+        log.error(f"Exception in evaluate_trade after threshold for {symbol}: {e}")
+        log.error(f"Exception traceback: {traceback.format_exc()}")
         conn.close()
 
 def get_orderbook_price(symbol, side, fallback_price, offset_pct):
