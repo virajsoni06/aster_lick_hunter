@@ -230,6 +230,11 @@ class Dashboard {
             <td>${this.formatCurrency(position.initialMargin)}</td>
             <td>${position.leverage}x</td>
         `;
+
+        // Make row clickable for position details
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => this.showPositionDetails(position.symbol, position.side));
+
         return row;
     }
 
@@ -259,6 +264,11 @@ class Dashboard {
             const liquidations = response.data;
 
             const tbody = document.getElementById('liquidations-tbody');
+            if (!tbody) {
+                console.warn('Liquidations table body not found');
+                return;
+            }
+
             tbody.innerHTML = '';
 
             liquidations.forEach(liq => {
@@ -287,6 +297,11 @@ class Dashboard {
 
     addLiquidationRow(liquidation) {
         const tbody = document.getElementById('liquidations-tbody');
+        if (!tbody) {
+            console.warn('Liquidations table body not found');
+            return;
+        }
+
         const row = this.createLiquidationRow(liquidation);
 
         // Add to top of table
@@ -1236,6 +1251,285 @@ class Dashboard {
         } catch (error) {
             console.error('Error loading trade details:', error);
             this.showToast('Error loading trade details', 'error');
+        }
+    }
+
+    async showPositionDetails(symbol, side) {
+        try {
+            const response = await axios.get(`/api/positions/${symbol}/${side}`);
+            const position = response.data;
+
+            const modal = document.getElementById('position-modal');
+            const modalBody = document.getElementById('position-modal-body');
+
+            // Build detailed HTML
+            let html = `
+                <div class="position-details">
+                    <h4>Position Summary - ${symbol} ${side}</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="label">Total Quantity:</span>
+                            <span class="value">${position.summary.total_quantity.toFixed(4)}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Avg Entry Price:</span>
+                            <span class="value">$${position.summary.avg_entry_price.toFixed(4)}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Unrealized PNL:</span>
+                            <span class="value ${position.summary.unrealized_pnl >= 0 ? 'positive' : 'negative'}">
+                                ${this.formatCurrency(position.summary.unrealized_pnl)}
+                            </span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Total Margin:</span>
+                            <span class="value">${this.formatCurrency(position.summary.total_margin)}</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Tranches:</span>
+                            <span class="value">${position.summary.num_tranches}</span>
+                        </div>
+                    </div>
+            `;
+
+            // Add order relationships or tranches breakdown
+            if (position.order_relationships && position.order_relationships.length > 0) {
+                html += `
+                    <h4>Order Groups (Tranches)</h4>
+                    <div class="table-container">
+                        <table class="tranches-table">
+                            <thead>
+                                <tr>
+                                    <th>Tranche</th>
+                                    <th>Main Order</th>
+                                    <th>TP Order</th>
+                                    <th>SL Order</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                position.order_relationships.forEach(rel => {
+                    const mainStatus = position.order_statuses && rel.main_order_id ? position.order_statuses[rel.main_order_id] : null;
+                    const tpStatus = position.order_statuses && rel.tp_order_id ? position.order_statuses[rel.tp_order_id] : null;
+                    const slStatus = position.order_statuses && rel.sl_order_id ? position.order_statuses[rel.sl_order_id] : null;
+
+                    html += `
+                        <tr>
+                            <td>${rel.tranche_id || 0}</td>
+                            <td class="order-id">
+                                ${rel.main_order_id ? `
+                                    ${rel.main_order_id.substring(0, 8)}...
+                                    <span class="order-status ${mainStatus?.status?.toLowerCase() || 'unknown'}">
+                                        ${mainStatus?.status || 'N/A'}
+                                    </span>
+                                ` : 'N/A'}
+                            </td>
+                            <td>
+                                ${rel.tp_order_id ? `
+                                    ${rel.tp_order_id.substring(0, 8)}...
+                                    <span class="order-status ${tpStatus?.status?.toLowerCase() || 'pending'}">
+                                        ${tpStatus?.status || 'PENDING'}
+                                    </span>
+                                ` : 'None'}
+                            </td>
+                            <td>
+                                ${rel.sl_order_id ? `
+                                    ${rel.sl_order_id.substring(0, 8)}...
+                                    <span class="order-status ${slStatus?.status?.toLowerCase() || 'pending'}">
+                                        ${slStatus?.status || 'PENDING'}
+                                    </span>
+                                ` : 'None'}
+                            </td>
+                            <td>${rel.created_at ? this.formatTime(rel.created_at) : 'N/A'}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (position.tranches && position.tranches.length > 0) {
+                // Fallback to tranches if they exist
+                html += `
+                    <h4>Tranches Breakdown</h4>
+                    <div class="table-container">
+                        <table class="tranches-table">
+                            <thead>
+                                <tr>
+                                    <th>Tranche ID</th>
+                                    <th>Entry Price</th>
+                                    <th>Quantity</th>
+                                    <th>TP Order</th>
+                                    <th>SL Order</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                position.tranches.forEach(tranche => {
+                    const tpStatus = position.order_statuses && tranche.tp_order_id ? position.order_statuses[tranche.tp_order_id] : null;
+                    const slStatus = position.order_statuses && tranche.sl_order_id ? position.order_statuses[tranche.sl_order_id] : null;
+
+                    html += `
+                        <tr>
+                            <td>${tranche.tranche_id || 0}</td>
+                            <td>$${parseFloat(tranche.avg_entry_price || 0).toFixed(4)}</td>
+                            <td>${parseFloat(tranche.total_quantity || 0).toFixed(4)}</td>
+                            <td>
+                                ${tranche.tp_order_id ? `
+                                    <span class="order-status ${tpStatus?.status?.toLowerCase() || 'pending'}">
+                                        ${tpStatus?.status || 'PENDING'}
+                                    </span>
+                                ` : 'None'}
+                            </td>
+                            <td>
+                                ${tranche.sl_order_id ? `
+                                    <span class="order-status ${slStatus?.status?.toLowerCase() || 'pending'}">
+                                        ${slStatus?.status || 'PENDING'}
+                                    </span>
+                                ` : 'None'}
+                            </td>
+                            <td>${tranche.created_at ? this.formatTime(tranche.created_at) : 'N/A'}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // Add active orders
+            const activeOrders = position.order_relationships ? position.order_relationships.filter(rel => {
+                const tpStatus = position.order_statuses ? position.order_statuses[rel.tp_order_id] : null;
+                const slStatus = position.order_statuses ? position.order_statuses[rel.sl_order_id] : null;
+                return (tpStatus && tpStatus.status === 'NEW') || (slStatus && slStatus.status === 'NEW');
+            }) : [];
+
+            if (activeOrders.length > 0) {
+                html += `
+                    <h4>Active TP/SL Orders</h4>
+                    <div class="table-container">
+                        <table class="orders-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Order ID</th>
+                                    <th>Price</th>
+                                    <th>Quantity</th>
+                                    <th>Status</th>
+                                    <th>Tranche</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                activeOrders.forEach(rel => {
+                    if (rel.tp_order_id && position.order_statuses[rel.tp_order_id]) {
+                        const order = position.order_statuses[rel.tp_order_id];
+                        html += `
+                            <tr>
+                                <td class="order-type-tp">TP</td>
+                                <td class="order-id">${rel.tp_order_id}</td>
+                                <td>$${parseFloat(order.price || 0).toFixed(4)}</td>
+                                <td>${parseFloat(order.quantity || 0).toFixed(4)}</td>
+                                <td><span class="order-status ${order.status.toLowerCase()}">${order.status}</span></td>
+                                <td>${rel.tranche_id}</td>
+                            </tr>
+                        `;
+                    }
+                    if (rel.sl_order_id && position.order_statuses[rel.sl_order_id]) {
+                        const order = position.order_statuses[rel.sl_order_id];
+                        html += `
+                            <tr>
+                                <td class="order-type-sl">SL</td>
+                                <td class="order-id">${rel.sl_order_id}</td>
+                                <td>$${parseFloat(order.price || 0).toFixed(4)}</td>
+                                <td>${parseFloat(order.quantity || 0).toFixed(4)}</td>
+                                <td><span class="order-status ${order.status.toLowerCase()}">${order.status}</span></td>
+                                <td>${rel.tranche_id}</td>
+                            </tr>
+                        `;
+                    }
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // Add recent trades
+            if (position.trades && position.trades.length > 0) {
+                const recentTrades = position.trades.slice(0, 20);
+                html += `
+                    <h4>Recent Trades (Last 20)</h4>
+                    <div class="table-container">
+                        <table class="trades-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>Side</th>
+                                    <th>Price</th>
+                                    <th>Qty</th>
+                                    <th>Status</th>
+                                    <th>PNL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                recentTrades.forEach(trade => {
+                    const pnl = trade.realized_pnl || 0;
+                    html += `
+                        <tr>
+                            <td>${this.formatTime(trade.timestamp)}</td>
+                            <td>${trade.trade_category}</td>
+                            <td class="${trade.side === 'BUY' ? 'position-long' : 'position-short'}">${trade.side}</td>
+                            <td>$${parseFloat(trade.price).toFixed(4)}</td>
+                            <td>${parseFloat(trade.qty).toFixed(4)}</td>
+                            <td><span class="status-${trade.status.toLowerCase()}">${trade.status}</span></td>
+                            <td class="${pnl >= 0 ? 'positive' : 'negative'}">
+                                ${pnl !== 0 ? this.formatCurrency(pnl) : '-'}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+
+            modalBody.innerHTML = html;
+            modal.style.display = 'block';
+
+            // Setup close handlers
+            const closeBtn = modal.querySelector('.modal-close');
+            closeBtn.onclick = () => modal.style.display = 'none';
+
+            window.onclick = (event) => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            };
+
+        } catch (error) {
+            console.error('Error loading position details:', error);
+            this.showToast('Error loading position details', 'error');
         }
     }
 

@@ -762,6 +762,125 @@ def get_trade_details(trade_id):
     conn.close()
     return jsonify(trade)
 
+@app.route('/api/positions/<symbol>/<side>')
+def get_position_details(symbol, side):
+    """Get detailed position information including tranches and orders."""
+    conn = get_db_connection()
+
+    # Check if position_tranches table exists
+    cursor = conn.execute('''
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='position_tranches'
+    ''')
+
+    if cursor.fetchone():
+        # Get all tranches for this position
+        cursor = conn.execute('''
+            SELECT * FROM position_tranches
+            WHERE symbol = ? AND position_side = ?
+            ORDER BY tranche_id ASC
+        ''', (symbol, side))
+        tranches = [dict(row) for row in cursor.fetchall()]
+    else:
+        tranches = []
+
+    # Get all related orders from order_relationships
+    cursor = conn.execute('''
+        SELECT * FROM order_relationships
+        WHERE symbol = ?
+        ORDER BY created_at DESC
+    ''', (symbol,))
+
+    all_order_rels = [dict(row) for row in cursor.fetchall()]
+
+    # Filter relationships based on side
+    order_relationships = []
+    for rel in all_order_rels:
+        # Check if position_side column exists
+        if 'position_side' in rel:
+            if rel['position_side'] == side:
+                order_relationships.append(rel)
+        else:
+            # If no position_side column, include all for the symbol
+            order_relationships.append(rel)
+
+    # Get all trade entries for this position
+    cursor = conn.execute('''
+        SELECT t.*,
+               CASE
+                   WHEN t.parent_order_id IS NULL THEN 'ENTRY'
+                   WHEN t.order_type = 'TAKE_PROFIT_MARKET' THEN 'TAKE_PROFIT'
+                   WHEN t.order_type = 'STOP_MARKET' THEN 'STOP_LOSS'
+                   ELSE t.order_type
+               END as trade_category
+        FROM trades t
+        WHERE t.symbol = ?
+        AND ((t.side = 'BUY' AND ? = 'LONG') OR (t.side = 'SELL' AND ? = 'SHORT'))
+        ORDER BY t.timestamp DESC
+        LIMIT 100
+    ''', (symbol, side, side))
+
+    trades = [dict(row) for row in cursor.fetchall()]
+
+    # Get current order status for all orders
+    order_ids = []
+    for rel in order_relationships:
+        if rel.get('main_order_id'):
+            order_ids.append(rel['main_order_id'])
+        if rel.get('tp_order_id'):
+            order_ids.append(rel['tp_order_id'])
+        if rel.get('sl_order_id'):
+            order_ids.append(rel['sl_order_id'])
+
+    order_statuses = {}
+    if order_ids:
+        placeholders = ','.join(['?' for _ in order_ids])
+        cursor = conn.execute(f'''
+            SELECT * FROM order_status
+            WHERE order_id IN ({placeholders})
+        ''', order_ids)
+
+        for row in cursor.fetchall():
+            order_statuses[row['order_id']] = dict(row)
+
+    # Get current position from exchange if available
+    cursor = conn.execute('''
+        SELECT * FROM positions
+        WHERE symbol = ? AND side = ?
+        ORDER BY tranche_id ASC
+    ''', (symbol, side))
+
+    current_positions = [dict(row) for row in cursor.fetchall()]
+
+    # Calculate aggregate position data
+    total_quantity = sum(p['quantity'] for p in current_positions)
+    if total_quantity > 0:
+        avg_entry_price = sum(p['entry_price'] * p['quantity'] for p in current_positions) / total_quantity
+    else:
+        avg_entry_price = 0
+
+    total_unrealized_pnl = sum(p.get('unrealized_pnl', 0) for p in current_positions)
+    total_margin = sum(p.get('margin_used', 0) for p in current_positions)
+
+    conn.close()
+
+    return jsonify({
+        'symbol': symbol,
+        'side': side,
+        'summary': {
+            'total_quantity': total_quantity,
+            'avg_entry_price': avg_entry_price,
+            'unrealized_pnl': total_unrealized_pnl,
+            'total_margin': total_margin,
+            'num_tranches': len(tranches)
+        },
+        'tranches': tranches,
+        'order_relationships': order_relationships,
+        'order_statuses': order_statuses,
+        'trades': trades,
+        'current_positions': current_positions
+    })
+
 @app.route('/api/config/defaults')
 def get_default_config():
     """Get default symbol configuration template."""

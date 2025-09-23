@@ -379,6 +379,131 @@ body {
     font-weight: 600;
 }
 
+/* Position Details Styles */
+.position-details {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.position-details h4 {
+    color: var(--accent-primary);
+    margin-bottom: 15px;
+    font-size: 16px;
+    font-weight: 600;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    background: var(--bg-secondary);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.summary-item .label {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-item .value {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.tranches-table, .orders-table, .trades-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.tranches-table thead, .orders-table thead, .trades-table thead {
+    background: var(--bg-secondary);
+}
+
+.tranches-table th, .orders-table th, .trades-table th,
+.tranches-table td, .orders-table td, .trades-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tranches-table tbody tr:hover, .orders-table tbody tr:hover, .trades-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+/* Order Status Styles */
+.order-status {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.order-status.new {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--accent-primary);
+}
+
+.order-status.filled {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--accent-success);
+}
+
+.order-status.canceled, .order-status.cancelled {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-danger);
+}
+
+.order-status.expired {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--accent-warning);
+}
+
+.order-status.pending {
+    background: rgba(160, 160, 160, 0.2);
+    color: var(--text-secondary);
+}
+
+/* Order Type Styles */
+.order-type-tp {
+    color: var(--accent-success);
+    font-weight: 600;
+}
+
+.order-type-sl {
+    color: var(--accent-danger);
+    font-weight: 600;
+}
+
+.order-id {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Position row hover effect */
+#positions-tbody tr:hover {
+    background: var(--bg-hover);
+    transition: background 0.2s ease;
+}
+
 .info-grid, .pnl-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

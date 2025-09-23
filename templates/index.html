@@ -164,6 +164,28 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Live Liquidations Feed -->
+                <div class="card live-liquidations">
+                    <h2>Live Liquidations</h2>
+                    <div class="table-container">
+                        <table id="liquidations-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Quantity</th>
+                                    <th>Price</th>
+                                    <th>Value (USDT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="liquidations-tbody">
+                                <!-- Liquidations will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -179,6 +201,19 @@
                 </div>
                 <div class="modal-body" id="trade-modal-body">
                     <!-- Trade details will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Position Details Modal -->
+        <div id="position-modal" class="modal">
+            <div class="modal-content" style="max-width: 900px;">
+                <div class="modal-header">
+                    <h3>Position Details</h3>
+                    <span class="modal-close">&times;</span>
+                </div>
+                <div class="modal-body" id="position-modal-body">
+                    <!-- Position details will be populated here -->
                 </div>
             </div>
         </div>
