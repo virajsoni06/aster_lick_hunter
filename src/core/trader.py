@@ -317,6 +317,93 @@ async def init_symbol_settings():
     finally:
         conn.close()
 
+    # Sync current exchange positions with position manager
+    log.info("Syncing exchange positions with position manager...")
+    try:
+        response = make_authenticated_request('GET', f"{config.BASE_URL}/fapi/v2/positionRisk")
+        if response.status_code == 200:
+            exchange_positions = response.json()
+
+            # Check if we need to reset positions (if collateral seems wrong)
+            stats_before = position_manager.get_stats()
+            total_collateral_before = stats_before.get('total_collateral_used', 0)
+
+            # If collateral seems way too high, reset and reload from exchange
+            if total_collateral_before > 100:
+                log.warning(f"High collateral detected (${total_collateral_before:.2f}), resetting position manager")
+                position_manager.reset_positions()
+                loaded_positions = set()
+            else:
+                # Track which positions we already loaded from database
+                loaded_positions = set()
+                for key in position_manager.positions.keys():
+                    loaded_positions.add(key)
+
+            for pos in exchange_positions:
+                symbol = pos['symbol']
+                position_amt = float(pos.get('positionAmt', 0))
+                position_side = pos.get('positionSide', 'BOTH')
+                entry_price = float(pos.get('entryPrice', 0))
+                mark_price = float(pos.get('markPrice', 0))
+                leverage_from_pos = int(float(pos.get('leverage', 1)))
+
+                # Skip if no position
+                if position_amt == 0:
+                    continue
+
+                # Determine the side based on position amount and position_side
+                if position_side == 'BOTH':
+                    side = 'LONG' if position_amt > 0 else 'SHORT'
+                else:
+                    side = position_side
+
+                # Create position key
+                pos_key = f"{symbol}_{side}"
+
+                # Skip if we already loaded this from database
+                if pos_key in loaded_positions:
+                    log.debug(f"Position {pos_key} already loaded from database, skipping exchange sync")
+                    continue
+
+                # Only add positions that aren't already in the manager
+                if symbol in config.SYMBOL_SETTINGS:
+                    leverage = config.SYMBOL_SETTINGS[symbol].get('leverage', leverage_from_pos)
+
+                    # Calculate the margin used (collateral)
+                    position_value = abs(position_amt) * mark_price
+                    margin_used = position_value / leverage if leverage > 0 else position_value
+
+                    # Manually add the position with correct margin_used
+                    if pos_key not in position_manager.positions:
+                        position_manager.positions[pos_key] = {}
+
+                    # Create Position object with proper margin_used
+                    from src.utils.position_manager import Position
+                    position_obj = Position(
+                        symbol=symbol,
+                        side=side,
+                        quantity=abs(position_amt),
+                        entry_price=entry_price,
+                        current_price=mark_price,
+                        position_value_usdt=position_value,
+                        leverage=leverage,
+                        margin_used=margin_used  # Set correct margin
+                    )
+
+                    # Calculate unrealized PnL
+                    if side == 'LONG':
+                        position_obj.unrealized_pnl = (mark_price - entry_price) * abs(position_amt)
+                    else:  # SHORT
+                        position_obj.unrealized_pnl = (entry_price - mark_price) * abs(position_amt)
+
+                    # Add as tranche 0
+                    position_manager.positions[pos_key][0] = position_obj
+                    log.info(f"Synced exchange position {pos_key}: {abs(position_amt)}@{entry_price}, margin={margin_used:.2f} USDT")
+        else:
+            log.error(f"Failed to sync exchange positions: {response.text}")
+    except Exception as e:
+        log.error(f"Error syncing exchange positions: {e}")
+
     # Fetch exchange info first to get symbol specifications
     await fetch_exchange_info()
 

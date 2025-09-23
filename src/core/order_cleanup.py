@@ -895,6 +895,7 @@ class OrderCleanup:
 
         while self.running:
             try:
+                logger.info("Running cleanup cycle...")
                 # Run cleanup cycle
                 await self.run_cleanup_cycle()
 
@@ -917,7 +918,8 @@ class OrderCleanup:
                 # Get the running event loop
                 loop = asyncio.get_running_loop()
                 self.cleanup_task = loop.create_task(self.cleanup_loop())
-                logger.info("Order cleanup started")
+                logger.info(f"Order cleanup task created: {self.cleanup_task}")
+                logger.info("Order cleanup started successfully")
             except RuntimeError as e:
                 logger.error(f"Failed to start order cleanup: {e}")
                 logger.error("Make sure start() is called from within an async context")

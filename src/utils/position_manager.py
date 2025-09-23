@@ -447,12 +447,37 @@ class PositionManager:
             positions_by_side = {'LONG': 0, 'SHORT': 0}
             total_margin = 0.0
             total_tranches = 0
+            position_details = []
 
             for key, tranches in self.positions.items():
-                for p in tranches.values():
+                for tranche_id, p in tranches.items():
                     positions_by_side[p.side] = positions_by_side.get(p.side, 0) + 1
                     total_margin += p.margin_used
                     total_tranches += 1
+
+                    # Add detailed position info for debugging
+                    position_details.append({
+                        'key': key,
+                        'tranche_id': tranche_id,
+                        'symbol': p.symbol,
+                        'side': p.side,
+                        'quantity': p.quantity,
+                        'entry_price': p.entry_price,
+                        'position_value': p.position_value_usdt,
+                        'leverage': p.leverage,
+                        'margin_used': p.margin_used,
+                        'pnl': p.unrealized_pnl
+                    })
+
+            # Log detailed breakdown if total margin seems high
+            if total_margin > 50:
+                logger.info(f"[DEBUG] High collateral detected: ${total_margin:.2f}")
+                for detail in position_details:
+                    logger.info(f"  - {detail['key']} T{detail['tranche_id']}: "
+                              f"qty={detail['quantity']:.4f} @ ${detail['entry_price']:.4f}, "
+                              f"value=${detail['position_value']:.2f}, "
+                              f"leverage={detail['leverage']}x, "
+                              f"margin=${detail['margin_used']:.2f}")
 
             return {
                 'total_tranches': total_tranches,
@@ -465,8 +490,19 @@ class PositionManager:
                 'collateral_usage_pct': (total_margin / self.max_total_exposure_usdt * 100)
                                      if self.max_total_exposure_usdt > 0 else 0,
                 'pending_collateral': dict(self.pending_exposure),
-                'per_symbol_collateral_limits': self.max_position_usdt_per_symbol
+                'per_symbol_collateral_limits': self.max_position_usdt_per_symbol,
+                'position_details': position_details  # Include details for debugging
             }
+
+    def reset_positions(self):
+        """
+        Clear all positions and pending exposure.
+        Use this to reset the position manager state.
+        """
+        with self.lock:
+            self.positions.clear()
+            self.pending_exposure.clear()
+            logger.info("Position manager reset - all positions cleared")
 
     def check_risk_limits(self) -> List[str]:
         """
