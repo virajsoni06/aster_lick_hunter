@@ -151,6 +151,9 @@ def run_dashboard():
 
 def main():
     """Main launcher function."""
+    # Import the credential helper
+    from scripts.setup_env import has_credentials
+    
     if COLORS_AVAILABLE:
         print(f"{Fore.CYAN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{Style.BRIGHT}  Aster Liquidation Hunter - Launcher{Style.RESET_ALL}")
@@ -164,8 +167,8 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Check for .env file first
-    if not os.path.exists('.env'):
+    # Check for credentials first
+    if not has_credentials():
         print(f"\n{colorize_prefix('Launcher', Fore.RED)} No .env file found!")
         print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Starting setup wizard to configure API credentials...")
         print("")
@@ -182,15 +185,15 @@ def main():
             print(f"{colorize_prefix('Launcher', Fore.YELLOW)} Get your API key at: https://www.asterdex.com/en/referral/3TixB2")
             sys.exit(1)
 
-        # Verify .env was created
-        if not os.path.exists('.env'):
-            print(f"{colorize_prefix('Launcher', Fore.RED)} .env file was not created. Exiting...")
+        # Verify credentials are now available
+        if not has_credentials():
+            print(f"{colorize_prefix('Launcher', Fore.RED)} Setup failed - no credentials available. Exiting...")
             sys.exit(1)
 
         print("")
 
-    # Check for required files
-    required_files = ['main.py', 'src/api/api_server.py', 'settings.json', '.env']
+    # Check for required files (excluding .env since it may not exist in cloud deployments)
+    required_files = ['main.py', 'src/api/api_server.py', 'settings.json']
     missing_files = []
     for file in required_files:
         if not os.path.exists(file):
@@ -220,15 +223,25 @@ def main():
     time.sleep(3)
 
     if COLORS_AVAILABLE:
+        # Load .env to get the correct PORT value
+        from dotenv import load_dotenv
+        load_dotenv()
+        port = int(os.getenv('PORT', 5000))
+        
         print(f"\n{Fore.GREEN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{Style.BRIGHT}  Services are running!{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}  Dashboard: {Fore.CYAN}{Style.BRIGHT}http://localhost:5000{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}  Dashboard: {Fore.CYAN}{Style.BRIGHT}http://localhost:{port}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}  Press {Fore.RED}{Style.BRIGHT}Ctrl+C{Style.RESET_ALL}{Fore.YELLOW} to stop all services{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}\n")
     else:
+        # Load .env to get the correct PORT value
+        from dotenv import load_dotenv
+        load_dotenv()
+        port = int(os.getenv('PORT', 5000))
+        
         print("\n" + "=" * 60)
         print("  Services are running!")
-        print("  Dashboard: http://localhost:5000")
+        print(f"  Dashboard: http://localhost:{port}")
         print("  Press Ctrl+C to stop all services")
         print("=" * 60 + "\n")
 
