@@ -48,7 +48,7 @@ class OrderCleanup:
 
         # Track recovery attempts with timestamps to prevent rapid retries
         self.recovery_attempts: Dict[str, float] = {}  # position_key -> last_attempt_timestamp
-        self.recovery_cooldown_seconds = 300  # 5 minutes cooldown between recovery attempts
+        self.recovery_cooldown_seconds = 60  # 1 minute cooldown between recovery attempts
 
         log.info(f"Order cleanup initialized: interval={cleanup_interval_seconds}s, stale_limit={stale_limit_order_minutes}min")
 

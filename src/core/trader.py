@@ -463,7 +463,16 @@ async def init_symbol_settings():
             if margin_type_response.status_code == 200:
                 log.info(f"Set margin type to {settings['margin_type']} for {symbol}")
             else:
-                log.error(f"Failed to set margin type for {symbol}: {margin_type_response.text}")
+                # Check if the error is -4046 ("No need to change margin type")
+                try:
+                    error_data = margin_type_response.json()
+                    if error_data.get('code') == -4046:
+                        log.info(f"Margin type for {symbol} is already {settings['margin_type']} (no change needed)")
+                    else:
+                        log.error(f"Failed to set margin type for {symbol}: {margin_type_response.text}")
+                except (ValueError, KeyError):
+                    # If we can't parse the response, fall back to treating it as an error
+                    log.error(f"Failed to set margin type for {symbol}: {margin_type_response.text}")
 
         # Set leverage if enabled
         if config.GLOBAL_SETTINGS.get('set_leverage', True):
