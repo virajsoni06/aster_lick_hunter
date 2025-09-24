@@ -330,6 +330,17 @@
         </div>
     </div>
 
+    <!-- Load modules in dependency order -->
+    <script src="{{ url_for('static', filename='js/modules/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/ui-components.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/table-builder.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/chart-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/position-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/trade-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/modules/event-handler.js') }}"></script>
+
+    <!-- Load main dashboard last -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
