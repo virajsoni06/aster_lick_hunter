@@ -9,9 +9,6 @@ window.DashboardModules.TableBuilder = (function() {
     // Private functions
     function createPositionRowPrivate(position) {
         const row = document.createElement('tr');
-        row.className = 'clickable-row position-row';
-        row.setAttribute('data-symbol', position.symbol);
-        row.setAttribute('data-side', position.side);
         const pnl = parseFloat(position.unrealizedPnl || 0);
         const pnlPct = position.positionValue > 0 ? (pnl / position.positionValue * 100) : 0;
         const sideClass = position.side === 'LONG' ? 'position-long' : 'position-short';
@@ -119,24 +116,6 @@ window.DashboardModules.TableBuilder = (function() {
                 }
             });
         }
-
-        // Add click handler for the entire row to show position details
-        row.addEventListener('click', function(e) {
-            // Don't trigger if clicking the close button
-            if (e.target.classList.contains('close-position-btn') ||
-                e.target.closest('.close-position-btn')) {
-                return;
-            }
-
-            // Get position details
-            const symbol = this.getAttribute('data-symbol');
-            const side = this.getAttribute('data-side');
-
-            // Call the position details display function
-            if (window.DashboardModules && window.DashboardModules.PositionManager) {
-                window.DashboardModules.PositionManager.showPositionDetails(symbol, side);
-            }
-        });
 
         return row;
     }

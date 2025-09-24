@@ -24,7 +24,8 @@ def get_position_details(symbol, side):
             # Find the specific position
             exchange_position = next((p for p in positions if p['symbol'] == symbol and float(p.get('positionAmt', 0)) != 0), None)
     except Exception as e:
-        print(f"Error fetching exchange position for {symbol}: {e}")
+        # print(f"Error fetching exchange position for {symbol}: {e}")
+        pass
 
     # Get tranche data from database for detailed breakdown
     # Check if position_tranches table exists
@@ -34,7 +35,8 @@ def get_position_details(symbol, side):
     ''')
 
     if cursor.fetchone():
-        # Get all tranches for this position
+        # Get all tranches for this position with their TP/SL orders
+        # First get tranches from position_tranches table
         cursor = conn.execute('''
             SELECT pt.*,
                    COALESCE(MAX(t.filled_qty), 0) as filled_qty,
@@ -50,6 +52,30 @@ def get_position_details(symbol, side):
 
         tranches = [dict(row) for row in cursor.fetchall()]
 
+        # Also get TP/SL orders from order_relationships for each tranche
+        # This will capture TP/SL orders that might not be in position_tranches
+        for tranche in tranches:
+            tranche_id = tranche.get('tranche_id')
+
+            # Get the most recent TP/SL orders for this tranche from order_relationships
+            cursor = conn.execute('''
+                SELECT tp_order_id, sl_order_id
+                FROM order_relationships
+                WHERE symbol = ? AND position_side = ? AND tranche_id = ?
+                AND (tp_order_id IS NOT NULL OR sl_order_id IS NOT NULL)
+                ORDER BY created_at DESC
+                LIMIT 1
+            ''', (symbol, side, tranche_id))
+
+            rel_row = cursor.fetchone()
+            if rel_row:
+                rel_dict = dict(rel_row)
+                # Update with order_relationships data if not already set
+                if not tranche.get('tp_order_id') and rel_dict.get('tp_order_id'):
+                    tranche['tp_order_id'] = rel_dict['tp_order_id']
+                if not tranche.get('sl_order_id') and rel_dict.get('sl_order_id'):
+                    tranche['sl_order_id'] = rel_dict['sl_order_id']
+
         # If we have exchange position data, don't calculate tranche-level PNL
         # since the exchange provides accurate total PNL only
         if exchange_position:
@@ -58,26 +84,6 @@ def get_position_details(symbol, side):
                 tranche['unrealized_pnl'] = 0.0
     else:
         tranches = []
-
-    # Get all related orders from order_relationships
-    cursor = conn.execute('''
-        SELECT * FROM order_relationships
-        WHERE symbol = ? AND (position_side = ? OR position_side IS NULL)
-        ORDER BY created_at DESC
-    ''', (symbol, side))
-
-    all_order_rels = [dict(row) for row in cursor.fetchall()]
-
-    # Filter relationships based on side
-    order_relationships = []
-    for rel in all_order_rels:
-        # Check if position_side column exists
-        if 'position_side' in rel:
-            if rel['position_side'] == side:
-                order_relationships.append(rel)
-        else:
-            # If no position_side column, include all for the symbol
-            order_relationships.append(rel)
 
     # Get all trade entries for this position
     cursor = conn.execute('''
@@ -97,12 +103,31 @@ def get_position_details(symbol, side):
 
     trades = [dict(row) for row in cursor.fetchall()]
 
+    # Get all related orders from order_relationships first (moved up)
+    cursor = conn.execute('''
+        SELECT * FROM order_relationships
+        WHERE symbol = ? AND (position_side = ? OR position_side IS NULL)
+        ORDER BY created_at DESC
+    ''', (symbol, side))
+
+    all_order_rels = [dict(row) for row in cursor.fetchall()]
+
+    # Filter relationships based on side
+    order_relationships = []
+    for rel in all_order_rels:
+        # Check if position_side column exists
+        if 'position_side' in rel:
+            if rel['position_side'] == side:
+                order_relationships.append(rel)
+        else:
+            # If no position_side column, include all for the symbol
+            order_relationships.append(rel)
+
     # Get current order status for all orders from exchange API
     order_statuses = {}
     if API_KEY and API_SECRET:
         try:
-            # Only fetch statuses for currently open TP/SL or LIMIT orders for this symbol
-            # This completely avoids querying old/stale orders that no longer exist
+            # First get currently open orders
             try:
                 response = make_authenticated_request('GET', 'https://fapi.asterdex.com/fapi/v1/openOrders', {'symbol': symbol})
                 if response.status_code == 200:
@@ -113,9 +138,8 @@ def get_position_details(symbol, side):
                         order_type = order.get('type', '')
                         order_status = order.get('status', '')
 
-                        # Only include orders that are TP/SL or LIMIT and are actually OPEN/NEW
-                        if order_status in ['NEW', 'PARTIALLY_FILLED'] and \
-                           ('TAKE_PROFIT' in order_type or 'STOP' in order_type or order_type == 'LIMIT'):
+                        # Include all TP/SL orders
+                        if 'TAKE_PROFIT' in order_type or 'STOP' in order_type:
                             order_statuses[order_id] = {
                                 'order_id': order_id,
                                 'status': order_status,
@@ -125,19 +149,62 @@ def get_position_details(symbol, side):
                                 'type': order_type,
                                 'executed_qty': float(order.get('executedQty', 0))
                             }
-                            print(f"Found active {order_type} order {order_id} with status {order_status}")
+                            # Debug logging disabled to reduce noise
+                            # print(f"Found active {order_type} order {order_id} with status {order_status}")
                 else:
-                    print(f"Error fetching open orders: {response.status_code}")
+                    # print(f"Error fetching open orders: {response.status_code}")
+                    pass
 
             except Exception as e:
-                print(f"Error fetching open orders for symbol {symbol}: {e}")
+                # print(f"Error fetching open orders for symbol {symbol}: {e}")
+                pass
 
-            # Do NOT query any old/completed orders - only current open orders matter for status display
-            if not order_statuses:
-                print(f"No active TP/SL/LIMIT orders found for {symbol} - no order status lookup needed")
+            # Also check order status from database for orders that may have been filled/canceled
+            # Get all unique TP/SL order IDs from tranches and order_relationships
+            tp_sl_order_ids = set()
+
+            for tranche in tranches:
+                if tranche.get('tp_order_id'):
+                    tp_sl_order_ids.add(str(tranche['tp_order_id']))
+                if tranche.get('sl_order_id'):
+                    tp_sl_order_ids.add(str(tranche['sl_order_id']))
+
+            for rel in order_relationships:
+                if rel.get('tp_order_id'):
+                    tp_sl_order_ids.add(str(rel['tp_order_id']))
+                if rel.get('sl_order_id'):
+                    tp_sl_order_ids.add(str(rel['sl_order_id']))
+
+            # For orders not in the open orders list, check if they exist in order_status table
+            if tp_sl_order_ids:
+                cursor = conn.execute('''
+                    SELECT order_id, symbol, side, quantity, price, position_side, status
+                    FROM order_status
+                    WHERE symbol = ? AND order_id IN ({})
+                '''.format(','.join(['?' for _ in tp_sl_order_ids])),
+                [symbol] + list(tp_sl_order_ids))
+
+                db_orders = cursor.fetchall()
+                for order_row in db_orders:
+                    order_dict = dict(order_row)
+                    order_id = str(order_dict['order_id'])
+                    if order_id not in order_statuses:
+                        order_statuses[order_id] = {
+                            'order_id': order_id,
+                            'status': order_dict.get('status', 'UNKNOWN'),
+                            'quantity': float(order_dict.get('quantity', 0)),
+                            'price': order_dict.get('price'),
+                            'side': order_dict.get('side'),
+                            'type': 'TP/SL',
+                            'executed_qty': 0
+                        }
+
+            # if not order_statuses:
+            #     print(f"No TP/SL orders found for {symbol}")
 
         except Exception as e:
-            print(f"Error fetching order statuses from exchange: {e}")
+            # print(f"Error fetching order statuses: {e}")
+            pass
 
     # Calculate aggregate position data using exchange API for consistency with main dashboard
     if exchange_position:
