@@ -11,11 +11,27 @@ window.DashboardModules.TradeManager = (function() {
 
     // Private functions
     function loadTradesPrivate() {
-        return ApiClient.loadTrades().then(function(response) {
-            const trades = response.data;
+        const hours = parseInt(document.getElementById('trade-time-filter').value);
+        const limit = 100; // Increase limit to show more trades
+
+        return ApiClient.loadTrades(limit, hours).then(function(response) {
+            const trades = response.data.trades || response.data;
+            const count = trades.length;
 
             const tbody = document.getElementById('trades-tbody');
             tbody.innerHTML = '';
+
+            // Update trade count display
+            const tradeCountElement = document.getElementById('trade-count');
+            if (tradeCountElement) {
+                tradeCountElement.textContent = `${count} trade${count !== 1 ? 's' : ''}`;
+            }
+
+            // Update last update timestamp
+            const lastUpdateElement = document.getElementById('trade-last-update');
+            if (lastUpdateElement) {
+                lastUpdateElement.textContent = new Date().toLocaleTimeString();
+            }
 
             trades.forEach(function(trade) {
                 const row = TableBuilder.createTradeRow(trade);
@@ -23,6 +39,11 @@ window.DashboardModules.TradeManager = (function() {
             });
         }).catch(function(error) {
             console.error('Error loading trades:', error);
+            // Update UI on error
+            const tradeCountElement = document.getElementById('trade-count');
+            const lastUpdateElement = document.getElementById('trade-last-update');
+            if (tradeCountElement) tradeCountElement.textContent = 'Error';
+            if (lastUpdateElement) lastUpdateElement.textContent = 'Error loading';
         });
     }
 

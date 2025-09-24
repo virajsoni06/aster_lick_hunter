@@ -91,6 +91,11 @@ class Dashboard {
             }
         });
 
+        // Trade time filter change
+        document.getElementById('trade-time-filter').addEventListener('change', (e) => {
+            this.TradeManager.loadTrades();
+        });
+
         // Position row clicks
         document.addEventListener('click', (e) => {
             if (e.target.closest('.positions-table tr') && !e.target.classList.contains('close-position-btn')) {
@@ -132,7 +137,8 @@ class Dashboard {
             // Then load positions and pnl data
             await Promise.all([
                 this.PositionManager.loadPositions(),
-                this.loadStats()
+                this.loadStats(),
+                this.TradeManager.loadTrades()
             ]);
         } catch (error) {
             console.error('Error refreshing data:', error);

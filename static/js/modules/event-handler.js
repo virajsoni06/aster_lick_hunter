@@ -37,7 +37,14 @@ window.DashboardModules.EventHandler = (function() {
                 UIComponents.showToast(`New liquidation: ${event.data.symbol} - ${usdtValue}`, 'info');
                 break;
             case 'new_trade':
-                dashboard.addTradeRow(event.data);
+                dashboard.TradeManager.addTradeRow(event.data);
+                // Update trade count after adding new row
+                const currentCount = parseInt(document.getElementById('trade-count').textContent) || 0;
+                const tradeCountElement = document.getElementById('trade-count');
+                if (tradeCountElement) {
+                    const countText = currentCount + 1;
+                    tradeCountElement.textContent = `${countText} trade${countText !== 1 ? 's' : ''}`;
+                }
                 UIComponents.showToast(`Trade executed: ${event.data.symbol}`, 'success');
                 break;
             case 'config_updated':

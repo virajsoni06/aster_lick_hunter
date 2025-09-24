@@ -168,7 +168,19 @@
 
             <!-- Recent Trades -->
             <div class="card recent-trades">
-                <h2>Closed Trades with PNL</h2>
+                <div class="card-header">
+                    <h2>Closed Trades with PNL</h2>
+                    <div class="trade-controls">
+                        <select id="trade-time-filter" class="time-filter">
+                            <option value="24">Last 24 Hours</option>
+                            <option value="72">Last 3 Days</option>
+                            <option value="168" selected>Last 7 Days</option>
+                            <option value="720">Last 30 Days</option>
+                        </select>
+                        <span id="trade-count" class="trade-count">0 trades</span>
+                        <span id="trade-last-update" class="last-update">Never</span>
+                    </div>
+                </div>
                 <div class="table-container">
                     <table id="trades-table">
                         <thead>

@@ -34,8 +34,8 @@ window.DashboardModules.ApiClient = (function() {
         },
 
         // Trades
-        loadTrades: function(limit = 20) {
-            return getPrivate(`/api/trades?limit=${limit}`);
+        loadTrades: function(limit = 20, hours = 168) {
+            return getPrivate(`/api/trades?limit=${limit}&hours=${hours}`);
         },
 
         getTradeDetails: function(tradeId) {

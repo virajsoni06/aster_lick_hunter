@@ -2043,19 +2043,109 @@ tbody tr:hover {
 }
 
 /* Orders table in modal */
-.position-details .orders-table {
-    width: 100%;
-    margin-top: 10px;
+    .position-details .orders-table {
+        width: 100%;
+        margin-top: 10px;
+    }
+
+    .position-details .order-type-tp {
+        color: #10b981;
+        font-weight: bold;
+    }
+
+    .position-details .order-type-sl {
+        color: #ef4444;
+        font-weight: bold;
+    }
+
+/* Trade Controls Styles */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 15px 20px 15px 20px;
+    background: var(--bg-secondary);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid var(--border-color);
 }
 
-.position-details .order-type-tp {
-    color: #10b981;
-    font-weight: bold;
+.trade-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
 }
 
-.position-details .order-type-sl {
-    color: #ef4444;
-    font-weight: bold;
+.time-filter {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    font-size: 13px;
+    cursor: pointer;
+    min-width: 140px;
+    transition: all 0.2s ease;
+}
+
+.time-filter:hover {
+    border-color: var(--accent-primary);
+}
+
+.time-filter:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+.trade-count {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 0;
+}
+
+.last-update {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: 4px;
+    opacity: 0.8;
+}
+
+/* Responsive trade controls */
+@media (max-width: 768px) {
+    .trade-controls {
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .time-filter {
+        width: 100%;
+        min-width: auto;
+    }
+
+    .card-header {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
+    }
+
+    .trade-count,
+    .last-update {
+        font-size: 12px;
+    }
+}
+
+/* Ensure proper spacing for trades section */
+.card.recent-trades .card-header {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.card.recent-trades .card-header + .table-container {
+    margin-top: 15px;
 }
 
 /* Responsive adjustments for modal */
