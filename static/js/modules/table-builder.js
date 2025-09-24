@@ -36,51 +36,6 @@ window.DashboardModules.TableBuilder = (function() {
             }
         }
 
-        // Format TP/SL prices with visual indicators
-        const tpPrice = position.takeProfitPrice;
-        const slPrice = position.stopLossPrice;
-
-        let tpDisplay = '-';
-        let slDisplay = '-';
-        let tpClass = '';
-        let slClass = '';
-
-        if (tpPrice && tpPrice > 0) {
-            // Calculate distance percentage to TP
-            let tpDistance = 0;
-            if (position.side === 'LONG') {
-                tpDistance = ((tpPrice - markPrice) / markPrice * 100);
-            } else if (position.side === 'SHORT') {
-                tpDistance = ((markPrice - tpPrice) / markPrice * 100);
-            }
-
-            // Format display with price and percentage
-            tpDisplay = `$${tpPrice.toFixed(4)} <span class="tp-distance">(${tpDistance >= 0 ? '+' : ''}${tpDistance.toFixed(2)}%)</span>`;
-            tpClass = 'tp-price';
-
-            // Check if TP is close to being hit
-            if (Math.abs(tpDistance) <= 2) {
-                tpClass += ' tp-near';
-            }
-        }
-
-        if (slPrice && slPrice > 0) {
-            // Calculate distance percentage to SL
-            let slDistance = 0;
-            if (position.side === 'LONG') {
-                slDistance = ((markPrice - slPrice) / markPrice * 100);
-            } else if (position.side === 'SHORT') {
-                slDistance = ((slPrice - markPrice) / markPrice * 100);
-            }
-
-            slDisplay = `$${slPrice.toFixed(4)}`;
-            slClass = 'sl-price';
-
-            // Check if SL is close to being hit
-            if (slDistance <= 2 && slDistance >= 0) {
-                slClass += ' sl-near';
-            }
-        }
 
         row.innerHTML = `
             <td>${position.symbol}</td>
@@ -89,8 +44,6 @@ window.DashboardModules.TableBuilder = (function() {
             <td>$${parseFloat(position.entryPrice).toFixed(4)}</td>
             <td>$${parseFloat(position.markPrice).toFixed(4)}</td>
             <td class="${liqPriceClass}">${liqPriceDisplay}</td>
-            <td class="${tpClass}">${tpDisplay}</td>
-            <td class="${slClass}">${slDisplay}</td>
             <td class="${pnl >= 0 ? 'positive' : 'negative'}">
                 ${Utils.formatCurrency(pnl)}
             </td>

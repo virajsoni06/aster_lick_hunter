@@ -125,32 +125,70 @@ def get_position_details(symbol, side):
 
     # Get current order status for all orders from exchange API
     order_statuses = {}
+
+    # First, collect all TP/SL order IDs from tranches and relationships
+    # This needs to happen before we check open orders
+    tp_sl_order_ids = set()
+    tp_order_ids = set()  # Track specifically which are TP orders
+    sl_order_ids = set()  # Track specifically which are SL orders
+
+    for tranche in tranches:
+        if tranche.get('tp_order_id'):
+            order_id = str(tranche['tp_order_id'])
+            tp_sl_order_ids.add(order_id)
+            tp_order_ids.add(order_id)
+        if tranche.get('sl_order_id'):
+            order_id = str(tranche['sl_order_id'])
+            tp_sl_order_ids.add(order_id)
+            sl_order_ids.add(order_id)
+
+    for rel in order_relationships:
+        if rel.get('tp_order_id'):
+            order_id = str(rel['tp_order_id'])
+            tp_sl_order_ids.add(order_id)
+            tp_order_ids.add(order_id)
+        if rel.get('sl_order_id'):
+            order_id = str(rel['sl_order_id'])
+            tp_sl_order_ids.add(order_id)
+            sl_order_ids.add(order_id)
+
     if API_KEY and API_SECRET:
         try:
-            # First get currently open orders
+            # Get currently open orders
             try:
                 response = make_authenticated_request('GET', 'https://fapi.asterdex.com/fapi/v1/openOrders', {'symbol': symbol})
                 if response.status_code == 200:
                     open_orders_data = response.json()
-                    # Get status for all currently open orders (TP/SL and LIMIT)
+                    # Process all orders, checking if they're TP/SL orders
                     for order in open_orders_data:
                         order_id = str(order.get('orderId'))
                         order_type = order.get('type', '')
                         order_status = order.get('status', '')
 
-                        # Include all TP/SL orders
-                        if 'TAKE_PROFIT' in order_type or 'STOP' in order_type:
+                        # Include order if:
+                        # 1. It's explicitly a TAKE_PROFIT or STOP order type, OR
+                        # 2. It's a LIMIT order that we've identified as a TP order, OR
+                        # 3. It's any order that's in our TP/SL order ID list
+                        if ('TAKE_PROFIT' in order_type or 'STOP' in order_type or
+                            order_id in tp_sl_order_ids):
+
+                            # Determine the effective type based on our records
+                            if order_id in tp_order_ids and order_type == 'LIMIT':
+                                effective_type = 'TP_LIMIT'
+                            elif order_id in sl_order_ids and 'STOP' in order_type:
+                                effective_type = 'SL_STOP'
+                            else:
+                                effective_type = order_type
+
                             order_statuses[order_id] = {
                                 'order_id': order_id,
                                 'status': order_status,
                                 'quantity': float(order.get('origQty', 0)),
-                                'price': order.get('price'),
+                                'price': order.get('price') or order.get('stopPrice'),
                                 'side': order.get('side'),
-                                'type': order_type,
+                                'type': effective_type,
                                 'executed_qty': float(order.get('executedQty', 0))
                             }
-                            # Debug logging disabled to reduce noise
-                            # print(f"Found active {order_type} order {order_id} with status {order_status}")
                 else:
                     # print(f"Error fetching open orders: {response.status_code}")
                     pass
@@ -158,22 +196,6 @@ def get_position_details(symbol, side):
             except Exception as e:
                 # print(f"Error fetching open orders for symbol {symbol}: {e}")
                 pass
-
-            # Also check order status from database for orders that may have been filled/canceled
-            # Get all unique TP/SL order IDs from tranches and order_relationships
-            tp_sl_order_ids = set()
-
-            for tranche in tranches:
-                if tranche.get('tp_order_id'):
-                    tp_sl_order_ids.add(str(tranche['tp_order_id']))
-                if tranche.get('sl_order_id'):
-                    tp_sl_order_ids.add(str(tranche['sl_order_id']))
-
-            for rel in order_relationships:
-                if rel.get('tp_order_id'):
-                    tp_sl_order_ids.add(str(rel['tp_order_id']))
-                if rel.get('sl_order_id'):
-                    tp_sl_order_ids.add(str(rel['sl_order_id']))
 
             # For orders not in the open orders list, check if they exist in order_status table
             if tp_sl_order_ids:
@@ -189,13 +211,21 @@ def get_position_details(symbol, side):
                     order_dict = dict(order_row)
                     order_id = str(order_dict['order_id'])
                     if order_id not in order_statuses:
+                        # Determine type based on whether it's a TP or SL order
+                        if order_id in tp_order_ids:
+                            order_type = 'TP_ORDER'
+                        elif order_id in sl_order_ids:
+                            order_type = 'SL_ORDER'
+                        else:
+                            order_type = 'TP/SL'
+
                         order_statuses[order_id] = {
                             'order_id': order_id,
                             'status': order_dict.get('status', 'UNKNOWN'),
                             'quantity': float(order_dict.get('quantity', 0)),
                             'price': order_dict.get('price'),
                             'side': order_dict.get('side'),
-                            'type': 'TP/SL',
+                            'type': order_type,
                             'executed_qty': 0
                         }
 

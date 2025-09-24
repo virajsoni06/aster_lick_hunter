@@ -90,8 +90,8 @@ window.DashboardModules.PositionManager = (function() {
                                     <th>Entry Price</th>
                                     <th>Quantity</th>
                                     <th>PNL</th>
-                                    <th>TP Order</th>
-                                    <th>SL Order</th>
+                                    <th>TP Price</th>
+                                    <th>SL Price</th>
                                     <th>Created</th>
                                 </tr>
                             </thead>
@@ -104,6 +104,10 @@ window.DashboardModules.PositionManager = (function() {
                     const pnl = tranche.unrealized_pnl || 0;
                     const pnlClass = pnl >= 0 ? 'profit' : 'loss';
 
+                    // Get the actual prices from the order status objects
+                    const tpPrice = tpStatus?.price ? parseFloat(tpStatus.price) : null;
+                    const slPrice = slStatus?.price ? parseFloat(slStatus.price) : null;
+
                     html += `
                         <tr>
                             <td>${tranche.tranche_id || 0}</td>
@@ -111,17 +115,23 @@ window.DashboardModules.PositionManager = (function() {
                             <td>${parseFloat(tranche.total_quantity || 0).toFixed(4)}</td>
                             <td class="${pnlClass}">$${pnl.toFixed(2)}</td>
                             <td>
-                                ${tranche.tp_order_id ? `
-                                    <span class="order-status ${tpStatus?.status?.toLowerCase() || 'pending'}">
-                                        ${tpStatus?.status || 'PENDING'}
-                                    </span>
+                                ${tpPrice ? `
+                                    <div>
+                                        <span class="order-price">$${tpPrice.toFixed(2)}</span>
+                                        <span class="order-status-small ${tpStatus?.status?.toLowerCase() || 'pending'}">${tpStatus?.status || 'PENDING'}</span>
+                                    </div>
+                                ` : tranche.tp_order_id ? `
+                                    <span class="order-status-small pending">PENDING</span>
                                 ` : 'None'}
                             </td>
                             <td>
-                                ${tranche.sl_order_id ? `
-                                    <span class="order-status ${slStatus?.status?.toLowerCase() || 'pending'}">
-                                        ${slStatus?.status || 'PENDING'}
-                                    </span>
+                                ${slPrice ? `
+                                    <div>
+                                        <span class="order-price">$${slPrice.toFixed(2)}</span>
+                                        <span class="order-status-small ${slStatus?.status?.toLowerCase() || 'pending'}">${slStatus?.status || 'PENDING'}</span>
+                                    </div>
+                                ` : tranche.sl_order_id ? `
+                                    <span class="order-status-small pending">PENDING</span>
                                 ` : 'None'}
                             </td>
                             <td>${tranche.created_at ? window.DashboardModules.Utils.formatTime(tranche.created_at) : 'N/A'}</td>

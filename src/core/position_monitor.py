@@ -943,10 +943,11 @@ class PositionMonitor:
             'symbol': tranche.symbol,
             'side': close_side,
             'type': 'MARKET',
-            'quantity': str(quantity)
+            'quantity': str(quantity),
+            'reduceOnly': 'true'  # Required for closing positions
         }
 
-        # Only add positionSide in hedge mode (no reduceOnly)
+        # Add positionSide in hedge mode
         if self.hedge_mode:
             position_side = self._get_position_side('BUY' if tranche.side == 'LONG' else 'SELL')
             market_order['positionSide'] = position_side
