@@ -899,8 +899,7 @@ class OrderCleanup:
                     if len(orders_to_place) > 1:
                         # Use batch endpoint
                         import json
-                        # Log exactly what we're sending
-                        log.info(f"Sending batch recovery orders: {json.dumps(orders_to_place, indent=2)}")
+                        log.info(f"Sending {len(orders_to_place)} batch recovery orders for {symbol}")
                         batch_data = {'batchOrders': json.dumps(orders_to_place)}
                         resp = make_authenticated_request('POST', f"{cfg.BASE_URL}/fapi/v1/batchOrders", data=batch_data)
 
