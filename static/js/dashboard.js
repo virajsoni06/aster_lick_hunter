@@ -229,9 +229,19 @@ class Dashboard {
             </td>
             <td>${this.formatCurrency(position.initialMargin)}</td>
             <td>${position.leverage}x</td>
+            <td>
+                <button class="btn btn-danger btn-small close-position-btn" data-symbol="${position.symbol}" data-side="${position.side}">
+                    Close
+                </button>
+            </td>
         `;
 
-        // Position row - not clickable for details (user requested removal)
+        // Add click handler for close button
+        const closeBtn = row.querySelector('.close-position-btn');
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent row click from firing
+            this.closePosition(position.symbol, position.side);
+        });
 
         return row;
     }
@@ -1749,6 +1759,96 @@ class Dashboard {
                 second: '2-digit'
             });
             element.textContent = `Last updated: ${timeString}`;
+        }
+    }
+
+    closePosition(symbol, side) {
+        // Show custom confirmation modal
+        this.showClosePositionModal(symbol, side);
+    }
+
+    showClosePositionModal(symbol, side) {
+        // Store the position details for later use
+        this.confirmCloseSymbol = symbol;
+        this.confirmCloseSide = side;
+
+        // Update modal content
+        const symbolSideElement = document.getElementById('close-symbol-side');
+        if (symbolSideElement) {
+            symbolSideElement.textContent = `${symbol} ${side}`;
+        }
+
+        // Show modal
+        const modal = document.getElementById('close-position-modal');
+        modal.style.display = 'block';
+
+        // Setup event listeners
+        const confirmBtn = document.getElementById('confirm-close-btn');
+        if (confirmBtn) {
+            // Remove any existing listener to avoid duplicates
+            confirmBtn.removeEventListener('click', this.handleConfirmClose);
+            confirmBtn.addEventListener('click', () => {
+                this.closePositionConfirmed();
+            });
+        }
+
+        // Setup modal close handlers
+        const modalCloseBtn = modal.querySelector('.modal-close');
+        if (modalCloseBtn) {
+            modalCloseBtn.onclick = () => this.closeClosePositionModal();
+        }
+
+        // Close on outside click
+        window.onclick = (event) => {
+            if (event.target === modal) {
+                this.closeClosePositionModal();
+            }
+        };
+    }
+
+    closeClosePositionModal() {
+        const modal = document.getElementById('close-position-modal');
+        modal.style.display = 'none';
+        // Clear stored data
+        this.confirmCloseSymbol = null;
+        this.confirmCloseSide = null;
+    }
+
+    async closePositionConfirmed() {
+        const symbol = this.confirmCloseSymbol;
+        const side = this.confirmCloseSide;
+
+        if (!symbol || !side) {
+            this.showToast('Position details not available', 'error');
+            return;
+        }
+
+        // Close modal
+        this.closeClosePositionModal();
+
+        try {
+            // Make API call to close position
+            const response = await axios.post(`/api/positions/${symbol}/${side}/close`);
+
+            if (response.data.success) {
+                if (response.data.simulated) {
+                    // Simulation mode
+                    this.showToast(response.data.message, 'info');
+                } else {
+                    // Real close order placed
+                    this.showToast(`Close order placed for ${symbol} ${side}`, 'success');
+                }
+
+                // Refresh positions data after successful close
+                setTimeout(() => {
+                    this.loadAllData();
+                }, 1000); // Small delay to allow order to execute
+            } else {
+                this.showToast(response.data.error || 'Failed to close position', 'error');
+            }
+        } catch (error) {
+            console.error('Error closing position:', error);
+            this.showToast('Error closing position', 'error');
         }
     }
 

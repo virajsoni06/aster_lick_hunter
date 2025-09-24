@@ -203,3 +203,114 @@ def get_position_details(symbol, side):
         'trades': trades,
         'current_positions': []
     })
+
+@position_bp.route('/api/positions/<symbol>/<side>/close', methods=['POST'])
+def close_position(symbol, side):
+    """Close a position by placing a market order in the opposite direction."""
+    try:
+        # Get current position data from exchange
+        response = make_authenticated_request('GET', f'https://fapi.asterdex.com/fapi/v2/positionRisk')
+        if response.status_code != 200:
+            return jsonify({'error': f'Failed to fetch position data: {response.status_code}', 'success': False}), response.status_code
+
+        positions = response.json()
+        # Find the specific position
+        target_position = None
+        for pos in positions:
+            pos_symbol = pos['symbol']
+            position_amt = float(pos.get('positionAmt', 0))
+            pos_side = pos.get('positionSide', 'BOTH')
+
+            if pos_symbol == symbol and position_amt != 0:
+                # If we specified a specific side, try to match it
+                if side != 'BOTH':
+                    current_side = 'LONG' if position_amt > 0 else 'SHORT'
+                    if current_side == side:
+                        target_position = pos
+                        break
+                else:
+                    # For cases where side is 'BOTH' or fallback, take any position for this symbol
+                    target_position = pos
+                    break
+
+        if not target_position:
+            return jsonify({'error': f'No open position found for {symbol} {side}', 'success': False}), 404
+
+        position_amt = float(target_position.get('positionAmt', 0))
+        if position_amt == 0:
+            return jsonify({'error': f'No position size for {symbol} {side}', 'success': False}), 400
+
+        # Determine the closing order side (opposite of position)
+        quantity = abs(position_amt)
+        current_side = 'LONG' if position_amt > 0 else 'SHORT'
+
+        if current_side == 'LONG':
+            order_side = 'SELL'
+        else:
+            order_side = 'BUY'
+
+        # Get the position side for the order
+        position_side = target_position.get('positionSide', 'BOTH')
+
+        # Prepare market order to close the position
+        order_data = {
+            'symbol': symbol,
+            'side': order_side,
+            'type': 'MARKET',
+            'quantity': str(quantity),
+            'positionSide': position_side
+        }
+
+        # Only add reduceOnly in one-way mode (positionSide = BOTH)
+        if position_side == 'BOTH':
+            order_data['reduceOnly'] = 'true'
+
+        # Check if we're in simulation mode
+        try:
+            from src.utils.config import config
+            if config.SIMULATE_ONLY:
+                # In simulation mode, just log the action
+                print(f"SIMULATE: Would close position for {symbol} {side} with quantity {quantity}")
+                return jsonify({
+                    'success': True,
+                    'message': f'Simulated closing {symbol} {side} position of {quantity} units',
+                    'simulated': True
+                })
+        except:
+            pass
+
+        # Place the market order to close the position
+        order_response = make_authenticated_request('POST', f'https://fapi.asterdex.com/fapi/v1/order', data=order_data)
+
+        if order_response.status_code == 200:
+            order_result = order_response.json()
+            order_id = str(order_result.get('orderId', 'unknown'))
+
+            # Log the successful close (similar to how orders are logged in trader.py)
+            try:
+                from src.database.db import insert_trade
+                db_conn = get_db_connection()
+                insert_trade(db_conn, symbol, order_id, order_side, quantity, 0, 'SUCCESS',
+                           order_result, 'MARKET', None, filled_qty=quantity, avg_price=order_result.get('avgPrice', 0))
+                db_conn.close()
+            except Exception as e:
+                print(f"Error logging close position trade: {e}")
+
+            return jsonify({
+                'success': True,
+                'message': f'Successfully initiated close order for {symbol} {side}',
+                'order_id': order_id,
+                'order_side': order_side,
+                'quantity': quantity,
+                'order_details': order_result
+            })
+        else:
+            error_msg = order_response.text
+            return jsonify({
+                'error': f'Failed to place close order: {error_msg}',
+                'success': False
+            }), order_response.status_code
+
+    except Exception as e:
+        print(f"Error closing position {symbol} {side}: {e}")
+        return jsonify({'error': f'Internal error: {str(e)}', 'success': False}), 500

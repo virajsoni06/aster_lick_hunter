@@ -101,6 +101,7 @@
                                 <th>PNL %</th>
                                 <th>Margin</th>
                                 <th>Leverage</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="positions-tbody">
@@ -281,8 +282,32 @@
         </div>
     </div>
 
-    <!-- Minimum Notional Validation Modal -->
-    <div id="min-notional-modal" class="modal" style="display: none;">
+        <!-- Close Position Confirmation Modal -->
+        <div id="close-position-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>⚠️ Close Position</h3>
+                    <span class="modal-close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div id="close-position-content">
+                        <p>Are you sure you want to close your <span id="close-symbol-side"></span> position?</p>
+                        <p>This will execute a market order to fully close the position at the current market price.</p>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-success" id="confirm-close-btn">
+                            Yes, Close Position
+                        </button>
+                        <button class="btn btn-secondary" onclick="dashboard.closeClosePositionModal()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Minimum Notional Validation Modal -->
+        <div id="min-notional-modal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 800px;">
             <div class="modal-header">
                 <h2>⚠️ Minimum Notional Requirements</h2>
