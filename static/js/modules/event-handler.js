@@ -33,7 +33,8 @@ window.DashboardModules.EventHandler = (function() {
         switch(event.type) {
             case 'new_liquidation':
                 dashboard.addLiquidationRow(event.data);
-                UIComponents.showToast(`New liquidation: ${event.data.symbol}`, 'info');
+                const usdtValue = event.data.usdt_value ? `$${parseFloat(event.data.usdt_value).toLocaleString()}` : 'N/A';
+                UIComponents.showToast(`New liquidation: ${event.data.symbol} - ${usdtValue}`, 'info');
                 break;
             case 'new_trade':
                 dashboard.addTradeRow(event.data);
