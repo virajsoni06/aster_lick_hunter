@@ -68,8 +68,6 @@ def monitor_database():
 
                     if full_sync:
                         print("Running full periodic PNL sync (7 days)...")
-                    else:
-                        print("Running periodic PNL sync...")
 
                     new_records = pnl_tracker.sync_recent_income(hours=hours)
 
