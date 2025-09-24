@@ -32,6 +32,10 @@ The **Aster Liquidation Hunter Bot** is an automated trading system that:
 
 Think of it as your automated trading assistant that watches the market 24/7 and trades when big liquidations happen!
 
+### 📹 Preview
+
+https://github.com/user-attachments/assets/e6e19d6e-1ef0-41ce-b5df-3aa19f96a672
+
 ## ⚡ Quick Start (5 Minutes!)
 
 ### For Complete Beginners
