@@ -121,7 +121,13 @@ When creating new files for the project, follow these conventions:
 - One-time setup or migration scripts
 - Data analysis or reporting tools
 - Maintenance and cleanup utilities
-- Example: `scripts/export_trades.py`
+- Key scripts:
+  - `setup_env.py`: Interactive setup wizard for API credentials
+  - `migrate_to_position_monitor.py`: Migration to position monitor system
+  - `emergency_tp_sl_placement.py`: Emergency TP/SL order placement for unprotected positions
+  - `verify_position_protection.py`: Verify all positions have TP/SL orders
+  - `cleanup_mismatched_orders.py`: Clean up orphaned orders
+  - `fix_tranche_schema.py`: Fix database schema issues
 
 ### Frontend (`static/` and `templates/`)
 - **CSS Files** → `static/css/`
@@ -175,10 +181,19 @@ python tests/test_trade_logic.py
 python tests/test_rate_limiter.py
 python tests/test_tranche_system.py
 python tests/test_order_cleanup.py
+python tests/test_position_monitor.py
+python tests/test_position_monitor_e2e.py
 
 # Test specific functionality
 python tests/test_colors.py         # Test colored logging output
 python tests/test_collateral.py     # Test collateral calculations
+python tests/test_cleanup_issue.py  # Test order cleanup edge cases
+python tests/test_tranche_simple.py # Simple tranche system tests
+
+# Monitoring and debugging
+python tests/monitor_cleanup.py     # Monitor cleanup service operation
+python tests/verify_cleanup_config.py # Verify cleanup configuration
+python tests/debug_cleanup.py       # Debug cleanup issues
 ```
 
 ### Test Guidelines
@@ -212,8 +227,8 @@ python scripts/cleanup_test_tranches.py  # Clean test data from database
 The bot is configured through two main files:
 - `.env`: Contains API credentials (API_KEY, API_SECRET)
 - `settings.json`: Contains trading parameters:
-  - Global settings: volume_window_sec, simulate_only, db_path, multi_assets_mode, hedge_mode, order_ttl_seconds, max_open_orders_per_symbol, max_total_exposure_usdt, rate_limit_buffer_pct, time_in_force
-  - Per-symbol settings: volume_threshold, leverage, margin_type, trade_side, trade_value_usdt, price_offset_pct, max_position_usdt, take_profit/stop_loss settings, working_type, price_protect
+  - Global settings: volume_window_sec, simulate_only, db_path, multi_assets_mode, hedge_mode, order_ttl_seconds, max_open_orders_per_symbol, max_total_exposure_usdt, rate_limit_buffer_pct, time_in_force, use_position_monitor, tranche_pnl_increment_pct, max_tranches_per_symbol_side
+  - Per-symbol settings: volume_threshold, leverage, margin_type, trade_side, trade_value_usdt, price_offset_pct, max_position_usdt, take_profit/stop_loss settings, working_type, price_protect, volume_check_type (USDT or TOKEN)
 
 ## Architecture
 
@@ -260,6 +275,18 @@ The bot is configured through two main files:
    - Calculates trade performance metrics
    - Integrates with dashboard for real-time P&L display
 
+8. **Position Monitor (`src/core/position_monitor.py`)** *[Optional - enabled via `use_position_monitor` setting]*
+   - Unified TP/SL order management with real-time price monitoring
+   - Per-tranche TP/SL order tracking and management
+   - Instant profit capture when prices spike beyond thresholds
+   - WebSocket-based price monitoring for all active positions
+   - Re-entrant lock protection for thread-safe operations
+
+9. **Order Batcher (`src/core/order_batcher.py`)**
+   - Batch order submission for efficient API usage
+   - Handles multiple orders in a single API call
+   - Reduces API rate limit consumption
+
 ### Data Flow
 
 1. WebSocket receives liquidation event → `streamer.process_liquidation()`
@@ -268,7 +295,7 @@ The bot is configured through two main files:
 4. Volume check performed → `db.get_usdt_volume_in_window()` or `db.get_volume_in_window()`
 5. If threshold met, calculate position size from trade_value_usdt * leverage
 6. Place limit order with orderbook pricing → `trader.place_order()`
-7. Monitor for fill, then place TP/SL orders → `trader.place_tp_sl_orders()`
+7. Monitor for fill, then place TP/SL orders → `trader.place_tp_sl_orders()` or `position_monitor.handle_order_fill()`
 8. Trade and relationships recorded in database
 
 ## Key API Endpoints
@@ -373,6 +400,13 @@ The bot implements an intelligent position management system through "tranches":
 - All connections are properly closed after use to prevent locking issues
 - Database files: `bot.db` (main), backup copies created with data prefix
 
+### Database Auto-Migration
+- **Auto-migration on startup** (`src/database/auto_migrate.py`):
+  - Automatically detects and migrates existing positions to tranche system
+  - Creates migration_status table to track applied migrations
+  - Runs silently on each startup via `auto_migrate_positions()`
+  - No user intervention required for schema updates
+
 ### Order Precision Handling
 - Symbol specifications (minQty, stepSize, pricePrecision) are cached from exchangeInfo endpoint
 - Price and quantity calculations use proper rounding based on exchange requirements
@@ -399,3 +433,28 @@ The bot implements an intelligent position management system through "tranches":
 - Graceful handling of database lock issues with fresh connections
 - Automatic retry logic for transient API failures
 - Comprehensive error logging with context information
+
+### Logging System
+- **Colored Logger** (`src/utils/colored_logger.py`):
+  - Color-coded log levels for better visibility
+  - Specialized log methods: `startup()`, `info()`, `success()`, `warning()`, `error()`, `critical()`
+  - Trade-specific logging with symbol and side information
+  - Automatic Windows color support via colorama
+
+### API Integration Details
+- **Endpoint Weights** (`src/utils/endpoint_weights.py`):
+  - Pre-configured weight values for all API endpoints
+  - Used by rate limiter to prevent hitting exchange limits
+- **Rate Limiter** (`src/utils/rate_limiter.py`):
+  - Token bucket algorithm implementation
+  - Per-IP and per-UID limit tracking
+  - Automatic request throttling with configurable buffer
+
+### Symbol and Order Management
+- **Order Manager** (`src/utils/order_manager.py`):
+  - Order state tracking and validation
+  - Symbol precision handling for price and quantity
+- **Position Manager** (`src/utils/position_manager.py`):
+  - Real-time position tracking
+  - Net position calculation across tranches
+  - Integration with dashboard for position display
