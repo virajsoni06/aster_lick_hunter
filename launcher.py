@@ -223,17 +223,25 @@ def main():
     time.sleep(3)
 
     if COLORS_AVAILABLE:
+        # Load .env to get the correct PORT value
+        from dotenv import load_dotenv
+        load_dotenv()
+        port = int(os.getenv('PORT', 5000))
+        
         print(f"\n{Fore.GREEN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{Style.BRIGHT}  Services are running!{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}  Dashboard: {Fore.CYAN}{Style.BRIGHT}http://localhost:5000{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}  Dashboard: {Fore.CYAN}{Style.BRIGHT}http://localhost:{port}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}  Press {Fore.RED}{Style.BRIGHT}Ctrl+C{Style.RESET_ALL}{Fore.YELLOW} to stop all services{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{Style.BRIGHT}{'═' * 60}{Style.RESET_ALL}\n")
     else:
+        # Load .env to get the correct PORT value
+        from dotenv import load_dotenv
+        load_dotenv()
         port = int(os.getenv('PORT', 5000))
         
         print("\n" + "=" * 60)
         print("  Services are running!")
-        print("  Dashboard: http://localhost:{port}")
+        print(f"  Dashboard: http://localhost:{port}")
         print("  Press Ctrl+C to stop all services")
         print("=" * 60 + "\n")
 
