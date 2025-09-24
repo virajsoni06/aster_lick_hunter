@@ -261,7 +261,47 @@ class UserDataStream:
                 logger.error(f"Error updating database for order {order_id}: {e}")
                 # Continue processing even if database update fails
 
-        # Notify PositionMonitor when order fills (NEW)
+        # Check if this is a TP/SL order fill
+        if status == 'FILLED' and self.db_path:
+            try:
+                from src.database.db import get_db_conn
+                conn = get_db_conn()
+                cursor = conn.cursor()
+
+                # Check if this order is a TP or SL order
+                cursor.execute('''
+                    SELECT main_order_id, tp_order_id, sl_order_id, symbol, position_side, tranche_id
+                    FROM order_relationships
+                    WHERE tp_order_id = ? OR sl_order_id = ?
+                ''', (order_id, order_id))
+
+                result = cursor.fetchone()
+                conn.close()
+
+                if result:
+                    main_order_id, tp_order_id, sl_order_id, rel_symbol, rel_position_side, tranche_id = result
+                    order_type = "TP" if str(tp_order_id) == str(order_id) else "SL"
+                    logger.info(f"{order_type} order {order_id} filled for {rel_symbol} tranche {tranche_id}")
+
+                    # Notify position monitor to remove this tranche
+                    if self.position_monitor:
+                        import asyncio
+                        asyncio.create_task(self.position_monitor.on_tp_sl_filled({
+                            'symbol': rel_symbol,
+                            'position_side': rel_position_side,
+                            'tranche_id': tranche_id,
+                            'order_type': order_type,
+                            'order_id': order_id,
+                            'main_order_id': main_order_id
+                        }))
+
+                    # Don't process as regular order fill
+                    return
+
+            except Exception as e:
+                logger.error(f"Error checking if order {order_id} is TP/SL: {e}")
+
+        # Notify PositionMonitor when regular order fills (not TP/SL)
         if status == 'FILLED' and self.position_monitor:
             # Let PositionMonitor handle TP/SL placement for this fill
             import asyncio

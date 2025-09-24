@@ -407,6 +407,53 @@ class PositionMonitor:
             if tranche:
                 await self.place_tranche_tp_sl(tranche)
 
+    async def on_tp_sl_filled(self, fill_data: dict):
+        """
+        Handle TP/SL order fill event.
+        Removes the tranche and cancels remaining orders.
+        """
+        symbol = fill_data.get('symbol')
+        position_side = fill_data.get('position_side')
+        tranche_id = fill_data.get('tranche_id')
+        order_type = fill_data.get('order_type')  # 'TP' or 'SL'
+        order_id = fill_data.get('order_id')
+
+        logger.info(f"{order_type} order {order_id} filled for {symbol} {position_side} tranche {tranche_id}")
+
+        # Get the tranche
+        tranche = self.get_tranche(symbol, position_side, tranche_id)
+        if not tranche:
+            logger.warning(f"Tranche {tranche_id} not found for {symbol} {position_side}")
+            return
+
+        # Cancel the other order (if TP filled, cancel SL and vice versa)
+        if order_type == 'TP' and tranche.sl_order_id:
+            logger.info(f"Cancelling SL order {tranche.sl_order_id} after TP fill")
+            await self._cancel_order(symbol, tranche.sl_order_id)
+        elif order_type == 'SL' and tranche.tp_order_id:
+            logger.info(f"Cancelling TP order {tranche.tp_order_id} after SL fill")
+            await self._cancel_order(symbol, tranche.tp_order_id)
+
+        # Remove the tranche from tracking
+        if self.remove_tranche(symbol, position_side, tranche_id):
+            logger.info(f"Removed tranche {tranche_id} after {order_type} fill")
+        else:
+            logger.warning(f"Failed to remove tranche {tranche_id}")
+
+        # Update database to mark the tranche as closed
+        try:
+            conn = get_db_conn()
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE trades
+                SET status = 'CLOSED'
+                WHERE symbol = ? AND tranche_id = ?
+            ''', (symbol, tranche_id))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error updating database for closed tranche: {e}")
+
     async def start(self):
         """Start the position monitor."""
         if not self.use_position_monitor:
@@ -926,6 +973,44 @@ class PositionMonitor:
     async def instant_close_tranche(self, tranche: Tranche, mark_price: float):
         """Close tranche immediately at market price."""
         logger.warning(f"INSTANT PROFIT CAPTURE: Closing tranche {tranche.id} for {tranche.symbol}")
+
+        # First check if position still exists on exchange
+        try:
+            url = f"{config.BASE_URL}/fapi/v2/positionRisk?symbol={tranche.symbol}"
+            response = make_authenticated_request('GET', url)
+
+            if response.status_code == 200:
+                positions = response.json()
+                position_exists = False
+                position_amt = 0.0
+
+                for pos in positions:
+                    if pos['symbol'] == tranche.symbol:
+                        amt = float(pos.get('positionAmt', 0))
+                        if (tranche.side == 'LONG' and amt > 0) or (tranche.side == 'SHORT' and amt < 0):
+                            position_exists = True
+                            position_amt = abs(amt)
+                            break
+
+                if not position_exists or position_amt == 0:
+                    logger.warning(f"Position already closed for {tranche.symbol} tranche {tranche.id}, removing from monitor")
+                    # Remove tranche from tracking
+                    self.remove_tranche(tranche.symbol, tranche.side, tranche.id)
+                    # Cancel any remaining orders
+                    if tranche.tp_order_id:
+                        await self._cancel_order(tranche.symbol, tranche.tp_order_id)
+                    if tranche.sl_order_id:
+                        await self._cancel_order(tranche.symbol, tranche.sl_order_id)
+                    return
+
+                # Update quantity if position size has changed
+                if position_amt < tranche.quantity:
+                    logger.info(f"Position size reduced from {tranche.quantity} to {position_amt}")
+                    tranche.quantity = position_amt
+
+        except Exception as e:
+            logger.error(f"Error checking position existence: {e}")
+            # Continue with closure attempt
 
         # Cancel TP order first (it won't fill now)
         if tranche.tp_order_id:
