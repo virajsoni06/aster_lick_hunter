@@ -43,81 +43,81 @@ body {
 /* Header */
 .header {
     background: var(--bg-card);
-    border-radius: 12px;
-    padding: 20px 30px;
-    margin-bottom: 25px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border-color);
-}
-
-.header-top {
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-}
-
-.header-main {
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border: 1px solid var(--border-color);
 }
 
-.header-right-wrapper {
+.header-right {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
+    align-items: center;
+    gap: 10px;
 }
 
 .header h1 {
-    font-size: 26px;
+    font-size: 20px;
     font-weight: 600;
     background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    margin: 0;
 }
 
-.header-controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+.header .btn-primary {
+    padding: 8px 16px;
+    height: 34px;
+    font-size: 13px;
+    background: var(--accent-primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
 }
-.header-controls .btn-secondary,
-.header-controls .btn-settings {
-    background-color: var(--bg-hover);
-    color: var(--text-primary);
+
+.header .btn-primary:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+}
+
+.btn-dark {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
     border: 1px solid var(--border-color);
-    padding: 10px;
-    width: 40px;
-    height: 40px;
+    padding: 0;
+    width: 34px;
+    height: 34px;
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 20px;
+    font-size: 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
 }
-.header-controls .btn-secondary:hover,
-.header-controls .btn-settings:hover {
-    background-color: var(--bg-secondary);
-}
-.status-indicator {
-    padding: 10px 18px;
-    height: 40px;
-}
-.btn-primary {
-    height: 40px;
+
+.btn-dark:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-color);
 }
 
 .status-indicator {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
+    gap: 6px;
+    padding: 7px 14px;
     background: var(--bg-secondary);
-    border-radius: 20px;
+    border-radius: 17px;
     border: 1px solid var(--border-color);
+    height: 34px;
+    font-size: 12px;
+    color: var(--text-secondary);
 }
 
 .status-dot {
@@ -1007,27 +1007,27 @@ tbody tr:hover {
 .loading-indicator {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 14px;
+    gap: 8px;
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
 /* Loading spinner */
 .spinner {
-    border: 2px solid var(--border-color);
-    border-top: 2px solid var(--primary);
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--text-muted);
+    border-top: 2px solid var(--accent-primary);
     border-radius: 50%;
-    width: 20px;
-    height: 20px;
     animation: spin 1s linear infinite;
-    display: inline-block;
 }
 
 /* Last updated timestamp */
 .last-updated {
-    font-size: 12px;
-    color: var(--text-secondary);
-    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.8;
+    margin-left: 5px;
 }
 
 @keyframes spin {
@@ -1530,19 +1530,7 @@ tbody tr:hover {
     min-height: auto;
 }
 
-.btn-settings {
-    padding: 8px;
-    border: none;
-    background: none;
-    color: var(--text-secondary);
-    font-size: 20px;
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.btn-settings:hover {
-    color: var(--text-primary);
-}
+/* Settings button now handled by .btn-dark class */
 
 /* Minimum Notional Modal Styles */
 #min-notional-modal .modal-content {
@@ -1686,6 +1674,41 @@ tbody tr:hover {
 
 /* Responsive Updates */
 @media (max-width: 768px) {
+    /* Header responsive adjustments */
+    .header {
+        padding: 12px 15px;
+    }
+
+    .header h1 {
+        font-size: 16px;
+    }
+
+    .header-right {
+        gap: 6px;
+    }
+
+    .btn-dark {
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
+    }
+
+    .header .btn-primary {
+        height: 30px;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .status-indicator {
+        height: 30px;
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .last-updated {
+        display: none; /* Hide on mobile to save space */
+    }
+
     .balance-grid {
         grid-template-columns: 1fr;
     }

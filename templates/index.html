@@ -11,29 +11,23 @@
 <body>
     <div class="container">
         <!-- Header -->
-<header class="header">
-    <div class="header-top">
-        <div id="loading-indicator" class="loading-indicator" style="display: none;">
-            <div class="spinner"></div>
-            <span>Syncing...</span>
-        </div>
-    </div>
-    <div class="header-main">
-        <h1>Aster Liquidation Hunter</h1>
-        <div class="header-right-wrapper">
-            <div class="header-controls">
-            <span id="connection-status" class="status-indicator">
-                <span class="status-dot"></span>
-                <span class="status-text">Connecting...</span>
-            </span>
-            <button id="refresh-btn" class="btn btn-primary">Refresh</button>
-            <button onclick="window.location.href='/setup'" class="btn btn-secondary" title="API Setup">🔑</button>
-            <button id="settings-btn" class="btn-settings">⚙</button>
-        </div>
-        <div id="last-updated" class="last-updated">Last updated: Never</div>
-    </div>
-</div>
-</header>
+        <header class="header">
+            <h1>Aster Liquidation Hunter</h1>
+            <div class="header-right">
+                <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>Syncing...</span>
+                </div>
+                <span id="connection-status" class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </span>
+                <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+                <button onclick="window.location.href='/setup'" class="btn btn-dark" title="API Setup">🔑</button>
+                <button id="settings-btn" class="btn btn-dark">⚙</button>
+                <div id="last-updated" class="last-updated">Never</div>
+            </div>
+        </header>
 
         <!-- Focused Dashboard Layout -->
         <div class="dashboard-layout">
