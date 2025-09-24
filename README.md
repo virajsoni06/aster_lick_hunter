@@ -48,7 +48,8 @@ An advanced cryptocurrency trading bot that monitors real-time liquidation event
 
 ## 📊 Dashboard Preview
 
-<img width="1914" height="956" alt="image" src="https://github.com/user-attachments/assets/4f54d624-9af8-44d9-9ec2-0c61fba8b598" />
+<img width="1896" height="954" alt="image" src="https://github.com/user-attachments/assets/3fbba51a-8111-40d8-9a35-c6bf2bd31236" />
+
 
 
 ## 🛠️ Installation
