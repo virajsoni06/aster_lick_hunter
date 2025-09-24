@@ -548,22 +548,11 @@ class Dashboard {
     }
 
     openSettingsModal() {
-        const modal = document.getElementById('settings-modal');
-        modal.style.display = 'block';
+        // Use UIComponents to properly manage modal state
+        this.UIComponents.showModal('settings-modal');
 
         // Load config to ensure fresh data
         this.loadConfig();
-
-        // Setup close handlers
-        const closeBtn = modal.querySelector('.modal-close');
-        closeBtn.onclick = () => this.UIComponents.hideModal();
-
-        // Close on outside click
-        window.onclick = (event) => {
-            if (event.target === modal) {
-                this.UIComponents.hideModal();
-            }
-        };
     }
 
     loadTrades() {

@@ -11,6 +11,11 @@ from src.core.order_cleanup import OrderCleanup
 from src.core.user_stream import UserDataStream
 from src.utils.utils import log
 
+# Import PositionMonitor if enabled
+position_monitor = None
+if config.GLOBAL_SETTINGS.get('use_position_monitor', False):
+    from src.core.position_monitor import PositionMonitor
+
 def main():
     """Main entry point for the bot."""
     # Import the credential helper
@@ -95,6 +100,20 @@ def main():
         # Initialize symbol settings (leverage/margin type)
         await init_symbol_settings()
 
+        # Initialize PositionMonitor if enabled
+        global position_monitor
+        position_monitor_task = None
+        if config.GLOBAL_SETTINGS.get('use_position_monitor', False):
+            log.info("PositionMonitor enabled - initializing unified TP/SL management")
+            position_monitor = PositionMonitor()
+            position_monitor_task = asyncio.create_task(position_monitor.start())
+            # Make it available to trader module
+            import src.core.trader as trader
+            trader.position_monitor = position_monitor
+            await asyncio.sleep(0.1)  # Let it initialize
+        else:
+            log.info("PositionMonitor disabled - using legacy TP/SL system")
+
         # Initialize order cleanup manager
         cleanup_interval = config.GLOBAL_SETTINGS.get('order_cleanup_interval_seconds', 20)
         stale_limit_minutes = config.GLOBAL_SETTINGS.get('stale_limit_order_minutes', 3.0)
@@ -122,7 +141,8 @@ def main():
             order_manager=None,  # Can add OrderManager if needed
             position_manager=None,  # Can add PositionManager if needed
             db_conn=get_db_conn(),
-            order_cleanup=order_cleanup
+            order_cleanup=order_cleanup,
+            position_monitor=position_monitor  # Pass PositionMonitor
         )
 
         # Start user stream in background
@@ -163,6 +183,16 @@ def main():
         finally:
             # Cleanup on shutdown
             log.info("Shutting down services...")
+
+            # Stop PositionMonitor if running
+            if position_monitor:
+                await position_monitor.stop()
+                if position_monitor_task and not position_monitor_task.done():
+                    position_monitor_task.cancel()
+                    try:
+                        await position_monitor_task
+                    except asyncio.CancelledError:
+                        pass
 
             # Stop order cleanup first (non-async)
             order_cleanup.stop()

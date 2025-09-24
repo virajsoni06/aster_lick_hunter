@@ -20,7 +20,7 @@ class UserDataStream:
     Receives real-time updates for orders, positions, and account changes.
     """
 
-    def __init__(self, order_manager=None, position_manager=None, db_conn=None, order_cleanup=None):
+    def __init__(self, order_manager=None, position_manager=None, db_conn=None, order_cleanup=None, position_monitor=None):
         """
         Initialize user data stream.
 
@@ -29,12 +29,14 @@ class UserDataStream:
             position_manager: PositionManager instance for position updates
             db_conn: Database connection for persistence
             order_cleanup: OrderCleanup instance for cleaning orphaned orders
+            position_monitor: PositionMonitor instance for unified TP/SL management
         """
         self.order_manager = order_manager
         self.position_manager = position_manager
         # Use config DB_PATH consistently
         self.db_path = config.DB_PATH
         self.order_cleanup = order_cleanup
+        self.position_monitor = position_monitor
 
         self.ws_url = "wss://fstream.asterdex.com/ws/"
         self.listen_key = None
@@ -258,6 +260,19 @@ class UserDataStream:
             except Exception as e:
                 logger.error(f"Error updating database for order {order_id}: {e}")
                 # Continue processing even if database update fails
+
+        # Notify PositionMonitor when order fills (NEW)
+        if status == 'FILLED' and self.position_monitor:
+            # Let PositionMonitor handle TP/SL placement for this fill
+            import asyncio
+            asyncio.create_task(self.position_monitor.on_order_filled({
+                'order_id': order_id,
+                'symbol': symbol,
+                'side': side,
+                'quantity': filled_qty,
+                'fill_price': avg_price if avg_price > 0 else price,
+                'position_side': position_side
+            }))
 
         # Update position manager when order fills
         if status == 'FILLED' and self.position_manager:

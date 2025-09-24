@@ -23,6 +23,12 @@ order_batcher = OrderBatcher(batch_window_ms=200, max_batch_size=5)
 # Initialize position manager for tranche tracking
 position_manager = None
 
+# Position Monitor reference (will be set by main.py)
+position_monitor = None
+
+# Feature flag for using new PositionMonitor
+USE_POSITION_MONITOR = config.GLOBAL_SETTINGS.get('use_position_monitor', False)
+
 def get_opposite_side(side):
     """Get opposite side for OPPOSITE mode."""
     return 'SELL' if side == 'BUY' else 'BUY'
@@ -769,8 +775,13 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
 
         # Determine tranche for this order
         tranche_id = 0
-        if position_manager:
-            # Pre-add to position manager to get tranche assignment
+        if USE_POSITION_MONITOR and position_monitor:
+            # Use PositionMonitor to determine tranche
+            actual_side = 'LONG' if side == 'BUY' else 'SHORT'
+            tranche_id = position_monitor.determine_tranche_id(symbol, actual_side, entry_price)
+            log.info(f"PositionMonitor assigned tranche {tranche_id} for {symbol} {actual_side}")
+        elif position_manager:
+            # Legacy: Pre-add to position manager to get tranche assignment
             # This will be properly updated when order fills
             leverage = symbol_config.get('leverage', 1) if symbol_config else 1
             position_value = qty * entry_price
@@ -836,7 +847,22 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                 tp_sl_params['entry_price'] = fill_price
                 tp_sl_params['tranche_id'] = tranche_id
                 log.info(f"Main order filled immediately, placing TP/SL orders")
-                await place_tp_sl_orders(order_id, fill_price, tp_sl_params)
+
+                # Use PositionMonitor if enabled, otherwise legacy system
+                if USE_POSITION_MONITOR and position_monitor:
+                    # Register with PositionMonitor for handling
+                    await position_monitor.on_order_filled({
+                        'order_id': order_id,
+                        'symbol': symbol,
+                        'side': side,
+                        'quantity': executed_qty,
+                        'fill_price': fill_price,
+                        'position_side': position_side,
+                        'tranche_id': tranche_id
+                    })
+                else:
+                    # Legacy TP/SL placement
+                    await place_tp_sl_orders(order_id, fill_price, tp_sl_params)
 
                 # Update position manager with actual fill
                 if position_manager and executed_qty > 0:
@@ -851,7 +877,22 @@ async def place_order(symbol, side, qty, last_price, order_type='LIMIT', positio
                 # Start monitoring for fill to place TP/SL
                 tp_sl_params['tranche_id'] = tranche_id
                 log.info(f"Main order placed, will place TP/SL after fill")
-                asyncio.create_task(monitor_and_place_tp_sl(order_id, tp_sl_params))
+
+                # Register with PositionMonitor if enabled
+                if USE_POSITION_MONITOR and position_monitor:
+                    # Register order for tracking
+                    await position_monitor.register_order({
+                        'order_id': order_id,
+                        'symbol': symbol,
+                        'side': side,
+                        'quantity': qty,
+                        'tranche_id': tranche_id,
+                        'tp_pct': tp_sl_params.get('tp_pct'),
+                        'sl_pct': tp_sl_params.get('sl_pct')
+                    })
+                else:
+                    # Legacy monitoring
+                    asyncio.create_task(monitor_and_place_tp_sl(order_id, tp_sl_params))
 
             return order_id
         else:

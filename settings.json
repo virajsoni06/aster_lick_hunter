@@ -21,7 +21,11 @@
     "batch_orders": true,
     "buffer_liquidations": true,
     "liquidation_buffer_ms": 100,
-    "order_batch_window_ms": 200
+    "order_batch_window_ms": 200,
+    "use_position_monitor": true,
+    "instant_tp_enabled": true,
+    "price_monitor_reconnect_delay": 5,
+    "tp_sl_batch_enabled": true
   },
   "symbols": {
     "BTCUSDT": {
