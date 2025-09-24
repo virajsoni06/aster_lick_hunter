@@ -34,9 +34,7 @@ Think of it as your automated trading assistant that watches the market 24/7 and
 
 ### 📹 Preview
 
-<video src="docs/preview.mp4" width="100%" controls>
-  <a href="docs/preview.mp4">View Demo Video</a>
-</video>
+[![Watch Demo Video](https://img.youtube.com/vi/MuHPrGIn7GI/maxresdefault.jpg)](https://youtu.be/MuHPrGIn7GI)
 
 ## ⚡ Quick Start (5 Minutes!)
 
