@@ -13,11 +13,10 @@ from src.utils.config import config
 from src.utils.utils import log
 from src.database.db import insert_order_relationship, get_db_conn
 
-# Emergency debug
-EMERGENCY_DEBUG = True
+# Debug helper (disabled)
 def emergency_print(msg):
-    if EMERGENCY_DEBUG:
-        print(f"[DEBUG:CLEANUP] {msg}", file=sys.stdout, flush=True)
+    # Disabled - remove logging noise
+    pass
 
 
 class OrderCleanup:
@@ -903,27 +902,13 @@ class OrderCleanup:
         """
         Main cleanup loop that runs periodically.
         """
-        emergency_print("cleanup_loop ENTERED")  # Emergency debug print
-        emergency_print(f"Task: {asyncio.current_task()}")
-
-        # DIRECT PRINT to bypass all logging issues
-        print(f"[DIRECT] Starting order cleanup loop (every {self.cleanup_interval_seconds}s)", flush=True)
-        print(f"[DIRECT] Cleanup loop task: {asyncio.current_task()}", flush=True)
-
-        print("[DIRECT-BEFORE-LOGGER] About to call logger", flush=True)
         log.info(f"Starting order cleanup loop (every {self.cleanup_interval_seconds}s)")
-        log.info(f"Cleanup loop task: {asyncio.current_task()}")
-        print("[DIRECT-AFTER-LOGGER] Called logger", flush=True)
-
-        emergency_print("cleanup_loop logging completed")
 
         # Small initial delay to allow bot to fully start
         await asyncio.sleep(1)
-        emergency_print("cleanup_loop initial sleep completed")
 
         while self.running:
             try:
-                log.info("Running cleanup cycle...")
                 # Run cleanup cycle
                 result = await self.run_cleanup_cycle()
                 log.debug(f"Cleanup cycle completed: {result}")
