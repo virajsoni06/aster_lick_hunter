@@ -33,7 +33,7 @@ window.DashboardModules.EventHandler = (function() {
         switch(event.type) {
             case 'new_liquidation':
                 dashboard.addLiquidationRow(event.data);
-                UIComponents.showToast('New liquidation detected', 'info');
+                UIComponents.showToast(`New liquidation: ${event.data.symbol}`, 'info');
                 break;
             case 'new_trade':
                 dashboard.addTradeRow(event.data);
