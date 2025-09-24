@@ -9,6 +9,21 @@ import sys
 from pathlib import Path
 from typing import Optional
 import getpass
+from dotenv import load_dotenv
+
+def has_credentials() -> bool:
+    """
+    Check if API credentials are available from environment variables or .env file.
+    Uses python-dotenv to properly load .env files.
+    
+    Returns:
+        True if both API_KEY and API_SECRET are available
+    """
+    # Load .env file if it exists (no-op if already loaded or doesn't exist)
+    load_dotenv()
+    
+    # Now check for credentials (could be from system env vars OR .env file)
+    return bool(os.getenv('API_KEY') and os.getenv('API_SECRET'))
 
 class EnvSetup:
     def __init__(self):
@@ -16,13 +31,25 @@ class EnvSetup:
         self.referral_link = "https://www.asterdex.com/en/referral/3TixB2"
 
     def check_env_exists(self) -> bool:
-        """Check if .env file already exists"""
-        return self.env_path.exists()
+        """Check if credentials are available (uses python-dotenv to load .env automatically)"""
+        return has_credentials()
 
     def load_existing_env(self) -> dict:
-        """Load existing .env file contents"""
+        """Load existing environment variables or .env file contents"""
         env_vars = {}
-        if self.check_env_exists():
+        
+        # First try to load from process environment variables
+        if os.getenv('API_KEY'):
+            env_vars['API_KEY'] = os.getenv('API_KEY')
+        if os.getenv('API_SECRET'):
+            env_vars['API_SECRET'] = os.getenv('API_SECRET')
+        
+        # If we found env vars, return them (cloud deployment)
+        if env_vars:
+            return env_vars
+        
+        # Fallback to .env file parsing (local development)
+        if self.env_path.exists():
             with open(self.env_path, 'r') as f:
                 for line in f:
                     line = line.strip()

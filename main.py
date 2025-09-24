@@ -13,8 +13,11 @@ from src.utils.utils import log
 
 def main():
     """Main entry point for the bot."""
-    # Check for .env file first
-    if not os.path.exists('.env'):
+    # Import the credential helper
+    from scripts.setup_env import has_credentials
+    
+    # Check for credentials first
+    if not has_credentials():
         print("\n⚠️  No .env file found!")
         print("Starting setup wizard to configure API credentials...\n")
 
@@ -31,9 +34,9 @@ def main():
             print("\nGet your API key at: https://www.asterdex.com/en/referral/3TixB2")
             sys.exit(1)
 
-        # Verify .env was created
-        if not os.path.exists('.env'):
-            print(".env file was not created. Exiting...")
+        # Verify credentials are now available
+        if not has_credentials():
+            print("Setup failed - no credentials available. Exiting...")
             sys.exit(1)
 
         print("")
