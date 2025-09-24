@@ -50,6 +50,9 @@ class OrderCleanup:
         self.recovery_attempts: Dict[str, float] = {}  # position_key -> last_attempt_timestamp
         self.recovery_cooldown_seconds = 60  # 1 minute cooldown between recovery attempts
 
+        # Track failed order attempts to avoid retrying orders that consistently fail
+        self.failed_order_attempts: Dict[str, List[Dict]] = {}  # position_key -> list of failed attempts
+
         log.info(f"Order cleanup initialized: interval={cleanup_interval_seconds}s, stale_limit={stale_limit_order_minutes}min")
 
     async def get_open_orders(self, symbol: str = None) -> List[Dict]:
@@ -515,22 +518,36 @@ class OrderCleanup:
             # Get all open orders
             all_orders = await self.get_open_orders()
 
-            # Build a map of symbol -> order types
+            # Build a detailed map of symbol -> orders with quantities
             symbol_orders = {}
             for order in all_orders:
                 symbol = order['symbol']
                 order_type = order.get('type', '')
                 position_side = order.get('positionSide', 'BOTH')
+                order_qty = float(order.get('origQty', 0))
+                order_side = order.get('side', '')
+                order_status = order.get('status', '')
 
                 if symbol not in symbol_orders:
                     symbol_orders[symbol] = {}
 
-                # Track orders by position side
+                # Track orders by position side with full details
                 side_key = position_side if position_side != 'BOTH' else 'ANY'
                 if side_key not in symbol_orders[symbol]:
                     symbol_orders[symbol][side_key] = []
 
-                symbol_orders[symbol][side_key].append(order_type)
+                # Store full order details for proper validation
+                order_detail = {
+                    'type': order_type,
+                    'quantity': order_qty,
+                    'side': order_side,
+                    'status': order_status,
+                    'order_id': order.get('orderId')
+                }
+                symbol_orders[symbol][side_key].append(order_detail)
+
+                # Log order details for debugging
+                log.debug(f"Order {order.get('orderId')} for {symbol} {side_key}: {order_type} {order_side} {order_qty}")
 
             # Import format_price from trader which has the cached symbol specs
             from src.core.trader import format_price
@@ -577,24 +594,137 @@ class OrderCleanup:
                 else:
                     order_side_key = 'ANY'
 
+                # First try the specific position side key
                 existing_orders = symbol_orders.get(symbol, {}).get(order_side_key, [])
 
+                # If no orders found with the expected key, check if orders exist with position-specific keys
+                # This handles the case where bot config says no hedge mode but exchange has hedge mode orders
+                if len(existing_orders) == 0 and order_side_key == 'ANY':
+                    # Check if there are orders with LONG/SHORT keys that match our position
+                    if position_side == 'LONG' and 'LONG' in symbol_orders.get(symbol, {}):
+                        existing_orders = symbol_orders[symbol]['LONG']
+                        log.warning(f"Config says no hedge mode but found LONG orders on exchange for {symbol}")
+                    elif position_side == 'SHORT' and 'SHORT' in symbol_orders.get(symbol, {}):
+                        existing_orders = symbol_orders[symbol]['SHORT']
+                        log.warning(f"Config says no hedge mode but found SHORT orders on exchange for {symbol}")
+                    # If position_side is BOTH, collect all orders
+                    elif position_side == 'BOTH':
+                        all_position_orders = []
+                        for key in ['LONG', 'SHORT', 'ANY']:
+                            if key in symbol_orders.get(symbol, {}):
+                                all_position_orders.extend(symbol_orders[symbol][key])
+                        if all_position_orders:
+                            existing_orders = all_position_orders
+                            log.warning(f"Config says no hedge mode but found position-specific orders for {symbol}")
+
                 # Debug logging for order tracking
+                log.debug(f"Checking {symbol} {position_side} (key: {order_side_key})")
                 if symbol in symbol_orders:
                     log.debug(f"Orders for {symbol}: {symbol_orders[symbol]}")
-                    log.debug(f"Checking position side '{order_side_key}' for {symbol}, found orders: {existing_orders}")
+                    log.debug(f"Found {len(existing_orders)} orders for position side '{order_side_key}'")
 
-                # Check for TP orders (could be LIMIT orders acting as TP)
-                has_tp = any(order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']
-                            for order_type in existing_orders)
+                # Calculate total quantities covered by TP and SL orders
+                tp_qty_covered = 0
+                sl_qty_covered = 0
 
-                # Check for SL orders
-                has_sl = any(order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS']
-                            for order_type in existing_orders)
+                for order in existing_orders:
+                    order_type = order['type']
+                    order_qty = order['quantity']
 
-                # If orders exist on exchange, we're good - skip recovery
+                    # For TP orders: LIMIT orders that close the position (opposite side)
+                    # In LONG position: SELL orders are TP
+                    # In SHORT position: BUY orders are TP
+                    is_tp_order = False
+                    is_sl_order = False
+
+                    if position_side == 'LONG':
+                        # LONG position: SELL orders close the position
+                        if order['side'] == 'SELL':
+                            if order_type == 'LIMIT':
+                                is_tp_order = True
+                            elif order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS']:
+                                is_sl_order = True
+                    elif position_side == 'SHORT':
+                        # SHORT position: BUY orders close the position
+                        if order['side'] == 'BUY':
+                            if order_type == 'LIMIT':
+                                is_tp_order = True
+                            elif order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS']:
+                                is_sl_order = True
+                    else:
+                        # BOTH mode: check order types without side consideration
+                        if order_type in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']:
+                            is_tp_order = True
+                        elif order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS']:
+                            is_sl_order = True
+
+                    if is_tp_order:
+                        tp_qty_covered += order_qty
+                        log.debug(f"Found TP order covering {order_qty} units")
+                    elif is_sl_order:
+                        sl_qty_covered += order_qty
+                        log.debug(f"Found SL order covering {order_qty} units")
+
+                # Check if position is fully covered
+                position_qty = abs(position_amount)
+                has_tp = tp_qty_covered >= position_qty * 0.99  # Allow 1% tolerance for rounding
+                has_sl = sl_qty_covered >= position_qty * 0.99  # Allow 1% tolerance for rounding
+
+                if tp_qty_covered > 0 and not has_tp:
+                    log.warning(f"Position {symbol} {position_side} only partially covered by TP: {tp_qty_covered}/{position_qty}")
+                if sl_qty_covered > 0 and not has_sl:
+                    log.warning(f"Position {symbol} {position_side} only partially covered by SL: {sl_qty_covered}/{position_qty}")
+
+                # Check if we need to clean up duplicates first
+                # Count total stop orders for this symbol to avoid exchange limits
+                stop_orders = [order for order in existing_orders
+                              if order['type'] in ['STOP_MARKET', 'STOP', 'STOP_LOSS']]
+                stop_order_count = len(stop_orders)
+
+                # Also count LIMIT orders (potential TPs)
+                limit_orders = [order for order in existing_orders
+                               if order['type'] == 'LIMIT']
+                limit_order_count = len(limit_orders)
+
+                # If we have too many orders, clean up duplicates even if position is protected
+                if stop_order_count > 1 or limit_order_count > 1:
+                    log.warning(f"Position {symbol} {position_side} has {limit_order_count} LIMIT orders and {stop_order_count} STOP orders - cleaning up duplicates")
+
+                    # Cancel oldest duplicate orders if we have more than 1 of each type
+                    if stop_order_count > 1:
+                        log.warning(f"Canceling {stop_order_count - 1} duplicate STOP orders for {symbol} {position_side}")
+                        # Keep the newest stop order, cancel the rest
+                        for i, order in enumerate(stop_orders[:-1]):  # All except the last one
+                            try:
+                                cancel_params = {'symbol': symbol, 'orderId': order['order_id']}
+                                cancel_resp = make_authenticated_request('DELETE', f"{cfg.BASE_URL}/fapi/v1/order", cancel_params)
+                                if cancel_resp.status_code == 200:
+                                    log.info(f"Canceled duplicate stop order {order['order_id']}")
+                                else:
+                                    log.error(f"Failed to cancel duplicate order: {cancel_resp.text}")
+                            except Exception as e:
+                                log.error(f"Error canceling duplicate order: {e}")
+
+                    if limit_order_count > 1:
+                        log.warning(f"Canceling {limit_order_count - 1} duplicate LIMIT orders for {symbol} {position_side}")
+                        # Keep the newest limit order, cancel the rest
+                        for i, order in enumerate(limit_orders[:-1]):  # All except the last one
+                            try:
+                                cancel_params = {'symbol': symbol, 'orderId': order['order_id']}
+                                cancel_resp = make_authenticated_request('DELETE', f"{cfg.BASE_URL}/fapi/v1/order", cancel_params)
+                                if cancel_resp.status_code == 200:
+                                    log.info(f"Canceled duplicate limit order {order['order_id']}")
+                                else:
+                                    log.error(f"Failed to cancel duplicate order: {cancel_resp.text}")
+                            except Exception as e:
+                                log.error(f"Error canceling duplicate order: {e}")
+
+                    # After cleanup, continue to next position - don't place new orders
+                    continue
+
+                # If orders exist on exchange and no duplicates, we're good - skip recovery
                 if has_tp and has_sl:
-                    log.debug(f"Position {symbol} {position_side} has TP/SL orders on exchange")
+                    log.debug(f"Position {symbol} {position_side} fully protected (TP: {tp_qty_covered:.4f}, SL: {sl_qty_covered:.4f})")
                     continue
 
                 # Check if we're in cooldown period for this position
@@ -607,11 +737,24 @@ class OrderCleanup:
                     log.debug(f"Position {symbol} {position_side} in recovery cooldown for {remaining_cooldown:.0f}s")
                     continue
 
+                # Check if we have recent failed attempts for this position
+                failed_attempts = self.failed_order_attempts.get(position_key, [])
+                recent_failures = [f for f in failed_attempts if current_time - f['timestamp'] < 300]  # Last 5 minutes
+
+                if len(recent_failures) >= 3:
+                    log.warning(f"Position {symbol} {position_side} has {len(recent_failures)} recent failed attempts, skipping recovery")
+                    # Clean up old failed attempts
+                    self.failed_order_attempts[position_key] = recent_failures
+                    continue
+
+
                 # If only partial protection exists, log it
                 if has_tp and not has_sl:
                     log.warning(f"Position {symbol} {position_side} has TP but missing SL order")
                 elif has_sl and not has_tp:
                     log.warning(f"Position {symbol} {position_side} has SL but missing TP order")
+                else:
+                    log.warning(f"Position {symbol} {position_side} missing both TP and SL orders")
 
                 # Update recovery attempt timestamp
                 self.recovery_attempts[position_key] = current_time
@@ -701,7 +844,7 @@ class OrderCleanup:
                         # For recovery orders, use fixed stop loss instead
                         # Trailing stops are difficult to place after position is already open
                         # as they may immediately trigger if market has moved
-                        log.info(f"Converting trailing stop to fixed stop for recovery order on {symbol}")
+                        pass  # Convert to fixed stop for recovery
 
                         # Use fixed stop loss for recovery
                         sl_pct = symbol_config.get('stop_loss_pct', 5.0)
@@ -756,6 +899,8 @@ class OrderCleanup:
                     if len(orders_to_place) > 1:
                         # Use batch endpoint
                         import json
+                        # Log exactly what we're sending
+                        log.info(f"Sending batch recovery orders: {json.dumps(orders_to_place, indent=2)}")
                         batch_data = {'batchOrders': json.dumps(orders_to_place)}
                         resp = make_authenticated_request('POST', f"{cfg.BASE_URL}/fapi/v1/batchOrders", data=batch_data)
 
@@ -779,6 +924,15 @@ class OrderCleanup:
                                         sl_order_id = order_id
                                 else:
                                     log.error(f"Failed to place recovery order: {result}")
+                                    # Track failed attempt
+                                    position_key = f"{symbol}_{position_side}"
+                                    if position_key not in self.failed_order_attempts:
+                                        self.failed_order_attempts[position_key] = []
+                                    self.failed_order_attempts[position_key].append({
+                                        'timestamp': time.time(),
+                                        'error': result,
+                                        'order_type': orders_to_place[i]['type']
+                                    })
 
                             # Collect recovery orders for batch storage
                             if tp_order_id or sl_order_id:
@@ -789,7 +943,6 @@ class OrderCleanup:
                                     'sl_order_id': sl_order_id,
                                     'timestamp': int(time.time())
                                 })
-                                log.info(f"Queued recovery order relationship: tp={tp_order_id}, sl={sl_order_id}")
                         else:
                             log.error(f"Failed to place recovery orders: {resp.text}")
                     else:

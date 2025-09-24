@@ -259,6 +259,7 @@
                     </div>
                     <div id="global" class="tab-content active">
                         <div class="config-grid">
+                            <!-- Trading & Core Settings -->
                             <div class="config-item">
                                 <label>Simulate Only</label>
                                 <select id="simulate_only" class="config-input">
@@ -271,8 +272,112 @@
                                 <input type="number" id="max_total_exposure_usdt" class="config-input" step="0.01">
                             </div>
                             <div class="config-item">
+                                <label>Volume Window (sec)</label>
+                                <input type="number" id="volume_window_sec" class="config-input">
+                            </div>
+                            <div class="config-item">
                                 <label>Order TTL (sec)</label>
                                 <input type="number" id="order_ttl_seconds" class="config-input">
+                            </div>
+                            <div class="config-item">
+                                <label>Max Open Orders Per Symbol</label>
+                                <input type="number" id="max_open_orders_per_symbol" class="config-input">
+                            </div>
+                            <div class="config-item">
+                                <label>Rate Limit Buffer (%)</label>
+                                <input type="number" id="rate_limit_buffer_pct" class="config-input" step="0.1">
+                            </div>
+                            <div class="config-item">
+                                <label>Time in Force</label>
+                                <select id="time_in_force" class="config-input">
+                                    <option value="GTC">GTC (Good Till Cancel)</option>
+                                    <option value="IOC">IOC (Immediate or Cancel)</option>
+                                    <option value="FOK">FOK (Fill or Kill)</option>
+                                </select>
+                            </div>
+
+                            <!-- Mode Settings -->
+                            <div class="config-item">
+                                <label>Margin Type</label>
+                                <select id="set_margin_type" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label>Leverage</label>
+                                <select id="set_leverage" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label>Multi-Assets Mode</label>
+                                <select id="multi_assets_mode" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label>Hedge Mode</label>
+                                <select id="hedge_mode" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+
+                            <!-- Advanced Features -->
+                            <div class="config-item">
+                                <label>Use Position Monitor</label>
+                                <select id="use_position_monitor" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label>Use USDT Volume</label>
+                                <select id="use_usdt_volume" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label>Batch Orders</label>
+                                <select id="batch_orders" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+                            <div class="config-item">
+                                <label>Enable Order Consolidation</label>
+                                <select id="enable_order_consolidation" class="config-input">
+                                    <option value="false">False</option>
+                                    <option value="true">True</option>
+                                </select>
+                            </div>
+
+                            <!-- Position Monitor Settings -->
+                            <div class="config-item">
+                                <label>Max Tranches Per Symbol Side</label>
+                                <input type="number" id="max_tranches_per_symbol_side" class="config-input">
+                            </div>
+                            <div class="config-item">
+                                <label>Tranche PNL Increment (%)</label>
+                                <input type="number" id="tranche_pnl_increment_pct" class="config-input" step="0.1">
+                            </div>
+                            <div class="config-item">
+                                <label>Max Stop Orders Per Symbol</label>
+                                <input type="number" id="max_stop_orders_per_symbol" class="config-input">
+                            </div>
+
+                            <!-- Cleanup Settings -->
+                            <div class="config-item">
+                                <label>Order Cleanup Interval (sec)</label>
+                                <input type="number" id="order_cleanup_interval_seconds" class="config-input">
+                            </div>
+                            <div class="config-item">
+                                <label>Stale Limit Order (min)</label>
+                                <input type="number" id="stale_limit_order_minutes" class="config-input" step="0.1">
                             </div>
                         </div>
                     </div>
