@@ -6,15 +6,15 @@ import os
 from flask import Blueprint, jsonify, request, render_template
 from src.api.config import API_KEY, API_SECRET, parent_dir
 from src.api.services.settings_service import save_settings
+from scripts.setup_env import has_credentials
 
 setup_bp = Blueprint('setup', __name__)
 
 @setup_bp.route('/')
 def index():
     """Serve the main dashboard page."""
-    # Check if .env exists and is configured
-    env_path = os.path.join(parent_dir, '.env')
-    if not os.path.exists(env_path) or not API_KEY or not API_SECRET:
+    # Check if credentials are available (from env vars or .env file)
+    if not has_credentials():
         return render_template('setup.html')
     return render_template('index.html')
 
@@ -25,13 +25,12 @@ def setup():
 
 @setup_bp.route('/api/check-env')
 def check_env():
-    """Check if .env file exists and is configured."""
-    env_path = os.path.join(parent_dir, '.env')
-    exists = os.path.exists(env_path)
-    configured = bool(API_KEY and API_SECRET)
+    """Check if credentials are available (from env vars or .env file)."""
+    configured = has_credentials()
+    env_file_exists = os.path.exists(os.path.join(parent_dir, '.env'))
 
     response_data = {
-        'exists': exists,
+        'exists': env_file_exists,  # Keep for backward compatibility
         'configured': configured
     }
 
