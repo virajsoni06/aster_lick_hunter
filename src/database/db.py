@@ -135,6 +135,8 @@ def init_db(db_path):
         cursor.execute('ALTER TABLE trades ADD COLUMN filled_qty REAL')
     if 'avg_price' not in columns:
         cursor.execute('ALTER TABLE trades ADD COLUMN avg_price REAL')
+    if 'tranche_id' not in columns:
+        cursor.execute('ALTER TABLE trades ADD COLUMN tranche_id INTEGER DEFAULT 0')
 
     # Create indexes for faster queries
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_liquidations_symbol_timestamp ON liquidations (symbol, timestamp);')

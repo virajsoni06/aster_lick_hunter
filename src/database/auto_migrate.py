@@ -126,6 +126,13 @@ def create_tranche_for_position(conn: sqlite3.Connection, position: Dict) -> boo
         # Create new tranche
         timestamp = int(time.time())
 
+        # Get next available tranche_id for this symbol/position_side
+        cursor.execute('''
+            SELECT COALESCE(MAX(tranche_id), -1) + 1 FROM position_tranches
+            WHERE symbol = ? AND position_side = ?
+        ''', (position['symbol'], position['position_side']))
+        tranche_id = cursor.fetchone()[0]
+
         # Calculate price bands (±5% from entry)
         entry_price = position['avg_price']
         price_band_lower = entry_price * 0.95
@@ -133,14 +140,12 @@ def create_tranche_for_position(conn: sqlite3.Connection, position: Dict) -> boo
 
         cursor.execute('''
             INSERT INTO position_tranches
-            (symbol, position_side, avg_entry_price, total_quantity,
+            (tranche_id, symbol, position_side, avg_entry_price, total_quantity,
              price_band_lower, price_band_upper, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (position['symbol'], position['position_side'],
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (tranche_id, position['symbol'], position['position_side'],
               entry_price, position['quantity'],
               price_band_lower, price_band_upper, timestamp, timestamp))
-
-        tranche_id = cursor.lastrowid
 
         # Update trades with the new tranche_id
         cursor.execute('''
