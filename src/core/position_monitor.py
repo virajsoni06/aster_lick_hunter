@@ -10,7 +10,7 @@ import logging
 import websockets
 from typing import Dict, Optional, List, Tuple, Any
 from dataclasses import dataclass, field
-from threading import Lock
+from threading import RLock
 from src.utils.config import config
 from src.utils.auth import make_authenticated_request
 from src.database.db import get_db_conn, update_tranche_orders, insert_order_relationship
@@ -61,7 +61,7 @@ class PositionMonitor:
     def __init__(self):
         """Initialize the Position Monitor."""
         self.positions = {}  # {symbol_side: {tranches: {id: Tranche}}}
-        self.lock = Lock()
+        self.lock = RLock()
         self.ws = None
         self.running = False
         self.reconnect_task = None
