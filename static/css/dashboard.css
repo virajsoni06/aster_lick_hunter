@@ -234,7 +234,7 @@ body {
 
 /* Positions Table */
 #positions-table {
-    min-width: 900px;
+    min-width: 1200px;
 }
 
 #positions-table th:nth-child(1) { min-width: 100px; } /* Symbol */
@@ -242,10 +242,13 @@ body {
 #positions-table th:nth-child(3) { min-width: 100px; } /* Quantity */
 #positions-table th:nth-child(4) { min-width: 100px; } /* Entry Price */
 #positions-table th:nth-child(5) { min-width: 100px; } /* Mark Price */
-#positions-table th:nth-child(6) { min-width: 100px; } /* PNL */
-#positions-table th:nth-child(7) { min-width: 80px; }  /* PNL % */
-#positions-table th:nth-child(8) { min-width: 100px; } /* Margin */
-#positions-table th:nth-child(9) { min-width: 80px; }  /* Leverage */
+#positions-table th:nth-child(6) { min-width: 100px; } /* Liq. Price */
+#positions-table th:nth-child(7) { min-width: 140px; }  /* TP */
+#positions-table th:nth-child(8) { min-width: 100px; }  /* SL */
+#positions-table th:nth-child(9) { min-width: 100px; } /* PNL */
+#positions-table th:nth-child(10) { min-width: 80px; }  /* PNL % */
+#positions-table th:nth-child(11) { min-width: 100px; } /* Margin */
+#positions-table th:nth-child(12) { min-width: 80px; }  /* Leverage */
 
 /* Symbol Performance Table */
 #symbol-performance-table {
@@ -690,6 +693,75 @@ tbody tr:hover {
 
 .position-short {
     color: var(--danger);
+}
+
+/* Liquidation Price Warnings */
+.liquidation-warning {
+    color: var(--danger);
+    font-weight: 700;
+    animation: pulse-danger 1.5s infinite;
+}
+
+.liquidation-caution {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+@keyframes pulse-danger {
+    0%, 100% {
+        opacity: 1;
+        text-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+    }
+    50% {
+        opacity: 0.8;
+        text-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+    }
+}
+
+/* TP/SL Price Indicators */
+.tp-price {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.tp-price.tp-near {
+    color: var(--success);
+    font-weight: 700;
+    animation: pulse-success 1s infinite;
+}
+
+.tp-distance {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 400;
+    margin-left: 4px;
+}
+
+.tp-near .tp-distance {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.sl-price {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.sl-price.sl-near {
+    color: var(--danger);
+    font-weight: 700;
+    animation: pulse-danger 1s infinite;
+}
+
+@keyframes pulse-success {
+    0%, 100% {
+        opacity: 1;
+        text-shadow: 0 0 5px rgba(34, 197, 94, 0.5);
+    }
+    50% {
+        opacity: 0.8;
+        text-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
+    }
 }
 
 /* Buttons */

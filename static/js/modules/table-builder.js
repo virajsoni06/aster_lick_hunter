@@ -13,12 +13,81 @@ window.DashboardModules.TableBuilder = (function() {
         const pnlPct = position.positionValue > 0 ? (pnl / position.positionValue * 100) : 0;
         const sideClass = position.side === 'LONG' ? 'position-long' : 'position-short';
 
+        // Calculate liquidation risk
+        const liqPrice = parseFloat(position.liquidationPrice || 0);
+        const markPrice = parseFloat(position.markPrice || 0);
+        let liqPriceClass = '';
+        let liqPriceDisplay = liqPrice > 0 ? `$${liqPrice.toFixed(4)}` : '-';
+
+        if (liqPrice > 0 && markPrice > 0) {
+            // Calculate percentage distance to liquidation
+            const liqDistance = position.side === 'LONG'
+                ? ((markPrice - liqPrice) / markPrice * 100)
+                : ((liqPrice - markPrice) / markPrice * 100);
+
+            // Add warning class if within 10% of liquidation
+            if (liqDistance < 10) {
+                liqPriceClass = 'liquidation-warning';
+            } else if (liqDistance < 20) {
+                liqPriceClass = 'liquidation-caution';
+            }
+        }
+
+        // Format TP/SL prices with visual indicators
+        const tpPrice = position.takeProfitPrice;
+        const slPrice = position.stopLossPrice;
+
+        let tpDisplay = '-';
+        let slDisplay = '-';
+        let tpClass = '';
+        let slClass = '';
+
+        if (tpPrice && tpPrice > 0) {
+            // Calculate distance percentage to TP
+            let tpDistance = 0;
+            if (position.side === 'LONG') {
+                tpDistance = ((tpPrice - markPrice) / markPrice * 100);
+            } else if (position.side === 'SHORT') {
+                tpDistance = ((markPrice - tpPrice) / markPrice * 100);
+            }
+
+            // Format display with price and percentage
+            tpDisplay = `$${tpPrice.toFixed(4)} <span class="tp-distance">(${tpDistance >= 0 ? '+' : ''}${tpDistance.toFixed(2)}%)</span>`;
+            tpClass = 'tp-price';
+
+            // Check if TP is close to being hit
+            if (Math.abs(tpDistance) <= 2) {
+                tpClass += ' tp-near';
+            }
+        }
+
+        if (slPrice && slPrice > 0) {
+            // Calculate distance percentage to SL
+            let slDistance = 0;
+            if (position.side === 'LONG') {
+                slDistance = ((markPrice - slPrice) / markPrice * 100);
+            } else if (position.side === 'SHORT') {
+                slDistance = ((slPrice - markPrice) / markPrice * 100);
+            }
+
+            slDisplay = `$${slPrice.toFixed(4)}`;
+            slClass = 'sl-price';
+
+            // Check if SL is close to being hit
+            if (slDistance <= 2 && slDistance >= 0) {
+                slClass += ' sl-near';
+            }
+        }
+
         row.innerHTML = `
             <td>${position.symbol}</td>
             <td class="${sideClass}">${position.side}</td>
             <td>${Math.abs(position.positionAmt).toFixed(4)}</td>
             <td>$${parseFloat(position.entryPrice).toFixed(4)}</td>
             <td>$${parseFloat(position.markPrice).toFixed(4)}</td>
+            <td class="${liqPriceClass}">${liqPriceDisplay}</td>
+            <td class="${tpClass}">${tpDisplay}</td>
+            <td class="${slClass}">${slDisplay}</td>
             <td class="${pnl >= 0 ? 'positive' : 'negative'}">
                 ${Utils.formatCurrency(pnl)}
             </td>

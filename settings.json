@@ -9,7 +9,7 @@
     "use_usdt_volume": true,
     "order_ttl_seconds": 30,
     "max_open_orders_per_symbol": 5,
-    "max_total_exposure_usdt": 200.0,
+    "max_total_exposure_usdt": 600.0,
     "rate_limit_buffer_pct": 0.4,
     "order_status_check_interval": 5,
     "time_in_force": "GTC",
