@@ -32,6 +32,7 @@
             padding: 30px;
             text-align: center;
             border-bottom: 1px solid #2d2d2d;
+            position: relative;
         }
 
         .setup-header h1 {
@@ -233,11 +234,45 @@
         .hidden {
             display: none;
         }
+
+        .back-button {
+            position: absolute;
+            left: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #2a2a2a;
+            color: #ffffff;
+            border: 1px solid #2d2d2d;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s;
+        }
+
+        .back-button:hover {
+            background: #3a3a3a;
+            transform: translateY(-50%) translateX(-2px);
+        }
+
+        .back-button svg {
+            width: 16px;
+            height: 16px;
+        }
     </style>
 </head>
 <body>
     <div class="setup-container">
         <div class="setup-header">
+            <a href="/" class="back-button">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                Back to Dashboard
+            </a>
             <h1>🚀 Aster Liquidation Hunter Bot</h1>
             <p>API Configuration Setup</p>
         </div>
