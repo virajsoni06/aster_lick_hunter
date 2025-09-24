@@ -450,7 +450,16 @@ async def init_symbol_settings():
             if change_response.status_code == 200:
                 log.info(f"Changed Multi-Assets Mode to: {desired_mode}")
             else:
-                log.error(f"Failed to change Multi-Assets Mode: {change_response.text}")
+                # Check if the error is -4169 ("Unable to adjust Multi-Assets Mode with insufficient margin balance")
+                try:
+                    error_data = change_response.json()
+                    if error_data.get('code') == -4169:
+                        log.warning(f"Unable to change Multi-Assets Mode due to insufficient margin balance. Current mode will remain: {current_mode}")
+                    else:
+                        log.error(f"Failed to change Multi-Assets Mode: {change_response.text}")
+                except (ValueError, KeyError):
+                    # If we can't parse the response, fall back to treating it as an error
+                    log.error(f"Failed to change Multi-Assets Mode: {change_response.text}")
     else:
         log.error(f"Failed to check Multi-Assets Mode: {check_response.text}")
 
