@@ -22,8 +22,8 @@ python launcher.py
 python src/api/api_server.py
 
 # Initialize or migrate database schema
-python init_database.py
-python migrate_db.py
+python scripts/init_database.py
+python scripts/migrate_db.py
 ```
 
 Dashboard available at: http://localhost:5000
@@ -170,20 +170,15 @@ tests/
 
 ### Running Tests
 ```bash
-# Run all tests
-python -m pytest tests/
+# Run individual test files directly (no pytest required)
+python tests/test_trade_logic.py
+python tests/test_rate_limiter.py
+python tests/test_tranche_system.py
+python tests/test_order_cleanup.py
 
-# Run specific test file
-python -m pytest tests/unit/test_trader.py
-
-# Run with coverage
-python -m pytest tests/ --cov=src --cov-report=html
-
-# Run only unit tests
-python -m pytest tests/unit/
-
-# Run only integration tests
-python -m pytest tests/integration/
+# Test specific functionality
+python tests/test_colors.py         # Test colored logging output
+python tests/test_collateral.py     # Test collateral calculations
 ```
 
 ### Test Guidelines
@@ -198,16 +193,18 @@ python -m pytest tests/integration/
 
 ```bash
 # Check Python syntax errors
-python -m py_compile main.py src/**/*.py
+python -m py_compile main.py launcher.py
+python -m py_compile src/core/*.py src/api/*.py src/database/*.py src/utils/*.py
 
-# Format Python code (if black installed)
-python -m black src/ main.py launcher.py
+# Running with debug output (Windows)
+python main.py 2>&1 | python -c "import sys; [print(line, end='') for line in sys.stdin]" > debug.log
 
-# Type checking (if mypy installed)
-python -m mypy src/
-
-# Running with debug output
+# Running with debug output (Unix/Linux)
 python main.py 2>&1 | tee debug.log
+
+# Database maintenance
+python scripts/analyze_tranches.py       # Analyze tranche performance
+python scripts/cleanup_test_tranches.py  # Clean test data from database
 ```
 
 ## Configuration
@@ -355,6 +352,13 @@ When `simulate_only: true` in settings.json:
 
 ## Important Implementation Details
 
+### Startup Verification
+The order cleanup service performs startup verification:
+- Verifies exchange connectivity
+- Checks position mode and margin settings
+- Validates API credentials
+- Logs startup status with standardized format
+
 ### Tranche System
 The bot implements an intelligent position management system through "tranches":
 - Each new position starts as tranche 0
@@ -373,6 +377,7 @@ The bot implements an intelligent position management system through "tranches":
 - Symbol specifications (minQty, stepSize, pricePrecision) are cached from exchangeInfo endpoint
 - Price and quantity calculations use proper rounding based on exchange requirements
 - The `round_to_precision()` function in trader.py ensures all values meet exchange specifications
+- All orders use the configured `time_in_force` setting (default: GTC)
 
 ### Rate Limiting
 - Built-in rate limit protection with configurable buffer percentage
@@ -381,6 +386,16 @@ The bot implements an intelligent position management system through "tranches":
 
 ### Background Services
 - Order cleanup service runs in separate thread (order_cleanup.py)
+  - Startup verification on initialization
+  - Periodic cleanup of stale limit orders (configurable timeout)
+  - Automatic cancellation of related TP/SL orders
+  - Reduced logging noise for cleaner output
 - User data stream maintains WebSocket connection for real-time updates
 - Database monitoring thread in API server for live dashboard updates
 - All background services handle graceful shutdown via threading events
+
+### Error Handling
+- Emergency print function available for debugging critical issues (disabled by default)
+- Graceful handling of database lock issues with fresh connections
+- Automatic retry logic for transient API failures
+- Comprehensive error logging with context information

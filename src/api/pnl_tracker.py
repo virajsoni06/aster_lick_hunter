@@ -170,7 +170,6 @@ class PNLTracker:
                 if self.store_income_record(record):
                     new_records += 1
 
-        print(f"Synced {new_records} new income records")
 
         # Update PNL summary
         self.update_pnl_summary(start_time, end_time)

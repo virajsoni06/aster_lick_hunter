@@ -603,8 +603,49 @@ class OrderCleanup:
                         tp_price = entry_price * (1 - tp_pct / 100.0)
                         tp_side = 'BUY'
 
-                    # Format price properly for the symbol
+                    # Check if market has already exceeded TP target - if so, close immediately
                     from src.core.trader import format_price
+                    current_price = pos_detail['mark_price']
+
+                    should_close_immediately = False
+                    if position_amount > 0:  # LONG position
+                        if current_price > tp_price:
+                            should_close_immediately = True
+                    else:  # SHORT position
+                        if current_price < tp_price:
+                            should_close_immediately = True
+
+                    if should_close_immediately:
+                        # Close position immediately with market order
+                        profit_pct = abs((current_price - entry_price) / entry_price) * 100
+                        log.warning(f"Position {symbol} {position_side} has exceeded TP target! Current: {current_price}, TP: {tp_price}")
+                        log.info(f"Closing position immediately to realize {profit_pct:.2f}% profit")
+
+                        close_order = {
+                            'symbol': symbol,
+                            'side': tp_side,  # Same direction as TP would be
+                            'type': 'MARKET',
+                            'quantity': str(abs(position_amount)),
+                            'positionSide': position_side
+                        }
+
+                        # Hedge mode doesn't use reduceOnly, but we'll add it for safety
+                        if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
+                            close_order['reduceOnly'] = 'true'
+
+                        # Place immediate market close order
+                        if not cfg.SIMULATE_ONLY:
+                            resp = make_authenticated_request('POST', f"{cfg.BASE_URL}/fapi/v1/order", data=close_order)
+                            if resp.status_code == 200:
+                                log.info(f"Successfully placed immediate close order for {symbol} {position_side}")
+                            else:
+                                log.error(f"Failed to place immediate close order: {resp.text}")
+                        else:
+                            log.info(f"SIMULATE: Would close {symbol} {position_side} position at market")
+
+                        continue  # Skip TP placement since we're closing the position
+
+                    # Format price properly for the symbol
                     formatted_tp_price = format_price(symbol, tp_price)
 
                     tp_order = {
