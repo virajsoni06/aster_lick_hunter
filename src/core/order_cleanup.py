@@ -46,6 +46,10 @@ class OrderCleanup:
         # Track orders we've already tried to cancel during position closure
         self.processed_closure_orders: Set[str] = set()
 
+        # Track recovery attempts with timestamps to prevent rapid retries
+        self.recovery_attempts: Dict[str, float] = {}  # position_key -> last_attempt_timestamp
+        self.recovery_cooldown_seconds = 300  # 5 minutes cooldown between recovery attempts
+
         log.info(f"Order cleanup initialized: interval={cleanup_interval_seconds}s, stale_limit={stale_limit_order_minutes}min")
 
     async def get_open_orders(self, symbol: str = None) -> List[Dict]:
@@ -588,6 +592,30 @@ class OrderCleanup:
                 has_sl = any(order_type in ['STOP_MARKET', 'STOP', 'STOP_LOSS']
                             for order_type in existing_orders)
 
+                # If orders exist on exchange, we're good - skip recovery
+                if has_tp and has_sl:
+                    log.debug(f"Position {symbol} {position_side} has TP/SL orders on exchange")
+                    continue
+
+                # Check if we're in cooldown period for this position
+                position_key = f"{symbol}_{position_side}"
+                last_attempt = self.recovery_attempts.get(position_key, 0)
+                current_time = time.time()
+
+                if current_time - last_attempt < self.recovery_cooldown_seconds:
+                    remaining_cooldown = self.recovery_cooldown_seconds - (current_time - last_attempt)
+                    log.debug(f"Position {symbol} {position_side} in recovery cooldown for {remaining_cooldown:.0f}s")
+                    continue
+
+                # If only partial protection exists, log it
+                if has_tp and not has_sl:
+                    log.warning(f"Position {symbol} {position_side} has TP but missing SL order")
+                elif has_sl and not has_tp:
+                    log.warning(f"Position {symbol} {position_side} has SL but missing TP order")
+
+                # Update recovery attempt timestamp
+                self.recovery_attempts[position_key] = current_time
+
                 orders_to_place = []
 
                 # Prepare TP order if missing
@@ -658,8 +686,8 @@ class OrderCleanup:
                         'timeInForce': 'GTC'
                     }
 
-                    if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
-                        tp_order['reduceOnly'] = 'true'
+                    # In hedge mode, reduceOnly is not allowed for TP/SL orders
+                    # Position side handles the direction automatically
 
                     orders_to_place.append(tp_order)
                     log.info(f"Will place recovery TP order for {symbol} at {tp_price}")
@@ -718,8 +746,8 @@ class OrderCleanup:
                         }
                         log.info(f"Will place recovery SL order for {symbol} at {formatted_sl_price}")
 
-                    if not cfg.GLOBAL_SETTINGS.get('hedge_mode', False):
-                        sl_order['reduceOnly'] = 'true'
+                    # In hedge mode, reduceOnly is not allowed for TP/SL orders
+                    # Position side handles the direction automatically
 
                     orders_to_place.append(sl_order)
 

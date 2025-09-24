@@ -109,7 +109,7 @@ window.DashboardModules.TableBuilder = (function() {
         const qty = parseFloat(trade.qty || 0);
         const price = parseFloat(trade.price || 0);
 
-        // Only show PnL for completed trades
+        // Only show PnL for completed trades (FILLED or SUCCESS)
         const showPnl = trade.status === 'SUCCESS' || trade.status === 'FILLED';
 
         const pnlClass = realizedPnl >= 0 ? 'positive' : 'negative';

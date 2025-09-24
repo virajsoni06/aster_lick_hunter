@@ -32,10 +32,13 @@ def get_trades():
         conditions.append('t.symbol = ?')
         params.append(symbol)
 
-    # Status filter
+    # Status filter - default to showing only FILLED and SUCCESS trades for PNL display
     if status:
         conditions.append('t.status = ?')
         params.append(status)
+    else:
+        # By default, only show trades with PNL data (FILLED or SUCCESS status)
+        conditions.append("(t.status = 'FILLED' OR t.status = 'SUCCESS')")
 
     # Build final query with LEFT JOIN to income_history for PNL data
     # Now we try to match on exchange_trade_id first, then fallback to order_id

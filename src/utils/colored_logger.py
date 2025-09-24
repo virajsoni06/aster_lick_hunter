@@ -178,12 +178,22 @@ class ColoredLogger:
         self.logger.debug(message)
 
     def info(self, message):
+        # Clean up Unicode characters that can't be encoded in Windows console
+        if sys.platform == "win32":
+            message = message.replace('Ⓢ', 'S').replace('\u24c8', 'S')
         self.logger.info(message)
 
     def warning(self, message):
+        # Clean up Unicode characters that can't be encoded in Windows console
+        if sys.platform == "win32":
+            message = message.replace('Ⓢ', 'S').replace('\u24c8', 'S')
         self.logger.warning(message)
 
     def error(self, message):
+        # Clean up Unicode characters that can't be encoded in Windows console
+        if sys.platform == "win32":
+            # Replace problematic Unicode characters
+            message = message.replace('Ⓢ', 'S').replace('\u24c8', 'S')
         self.logger.error(message)
 
     def critical(self, message):
