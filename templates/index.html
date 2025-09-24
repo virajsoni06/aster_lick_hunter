@@ -37,50 +37,58 @@
 
         <!-- Focused Dashboard Layout -->
         <div class="dashboard-layout">
-            <!-- Balance Overview -->
-            <div class="card balance-overview">
-                <h2>Balance Overview</h2>
-                <div class="balance-grid">
-                    <div class="balance-item">
-                        <label>Wallet Balance</label>
-                        <span id="wallet-balance" class="balance-value">$0.00</span>
+            <!-- Account & Performance Overview -->
+            <div class="card account-performance-overview">
+                <div class="overview-content">
+                    <!-- Balance Section -->
+                    <div class="balance-section">
+                        <div class="balance-grid">
+                            <div class="metric-card">
+                                <div id="account-balance" class="metric-value">$0.00</div>
+                                <div class="metric-label">Account Balance</div>
+                                <div id="account-balance-change" class="metric-change"></div>
+                            </div>
+                            <div class="metric-card">
+                                <div id="wallet-balance" class="metric-value">$0.00</div>
+                                <div class="metric-label">Wallet Balance</div>
+                                <div id="wallet-balance-change" class="metric-change"></div>
+                            </div>
+                            <div class="metric-card">
+                                <div id="available-balance" class="metric-value">$0.00</div>
+                                <div class="metric-label">Available Balance</div>
+                                <div id="available-balance-change" class="metric-change"></div>
+                            </div>
+                            <div class="metric-card">
+                                <div id="margin-used" class="metric-value">$0.00</div>
+                                <div class="metric-label">Margin Used</div>
+                                <div id="margin-usage-pct" class="metric-percent"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="balance-item">
-                        <label>Available Balance</label>
-                        <span id="available-balance" class="balance-value">$0.00</span>
-                    </div>
-                    <div class="balance-item">
-                        <label>Margin Used</label>
-                        <span id="margin-used" class="balance-value">$0.00</span>
-                    </div>
-                    <div class="balance-item">
-                        <label>Unrealized PNL</label>
-                        <span id="unrealized-pnl" class="balance-value">$0.00</span>
-                    </div>
-                </div>
-            </div>
 
-            <!-- PNL Summary -->
-            <div class="card pnl-summary">
-                <h2>PNL Summary (7 Days)</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <label>Total PNL</label>
-                        <span id="total-pnl" class="stat-value">$0.00</span>
-                        <span id="total-pnl-pct" class="stat-percent"></span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Realized PNL</label>
-                        <span id="realized-pnl" class="stat-value">$0.00</span>
-                        <span id="realized-pnl-pct" class="stat-percent"></span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Win Rate</label>
-                        <span id="win-rate" class="stat-value">0%</span>
-                    </div>
-                    <div class="stat-item">
-                        <label>Total Trades</label>
-                        <span id="pnl-trades" class="stat-value">0</span>
+                    <!-- PNL Section -->
+                    <div class="pnl-metrics-section">
+                        <div class="pnl-grid">
+                            <div class="metric-card">
+                                <div id="total-pnl" class="metric-value">$0.00</div>
+                                <div class="metric-label">Total PNL</div>
+                                <div id="total-pnl-pct" class="metric-percent"></div>
+                            </div>
+                            <div class="metric-card">
+                                <div id="realized-pnl" class="metric-value">$0.00</div>
+                                <div class="metric-label">Realized PNL</div>
+                                <div id="realized-pnl-pct" class="metric-percent"></div>
+                            </div>
+                            <div class="metric-card">
+                                <div id="unrealized-pnl" class="metric-value">$0.00</div>
+                                <div class="metric-label">Unrealized PNL</div>
+                                <div id="unrealized-pnl-change" class="metric-change"></div>
+                            </div>
+                            <div class="metric-card">
+                                <div id="win-rate" class="metric-value">0%</div>
+                                <div class="metric-label">Win Rate</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -112,37 +120,38 @@
                 </div>
             </div>
 
-            <!-- PNL Analytics -->
-            <div class="pnl-section">
-                <div class="card pnl-chart">
-                    <h2>Daily PNL (7 Days)</h2>
-                    <canvas id="pnl-chart"></canvas>
-                </div>
+            <!-- PNL Chart -->
+            <div class="card pnl-chart">
+                <h2>Daily PNL (7 Days)</h2>
+                <canvas id="pnl-chart"></canvas>
+            </div>
 
-                <div class="card symbol-performance">
-                    <h2>Symbol Performance</h2>
-                    <div class="table-container">
-                        <table id="symbol-performance-table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Total PNL</th>
-                                    <th>Realized PNL</th>
-                                    <th>Fees</th>
-                                    <th>Trades</th>
-                                    <th>Win Rate</th>
-                                </tr>
-                            </thead>
-                            <tbody id="symbol-performance-tbody">
-                                <!-- Performance data will be populated here -->
-                            </tbody>
-                        </table>
-                        <div id="no-performance" class="no-data">No performance data available</div>
-                    </div>
+            <!-- Symbol Performance -->
+            <div class="card symbol-performance">
+                <h2>Symbol Performance</h2>
+                <div class="table-container">
+                    <table id="symbol-performance-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Total PNL</th>
+                                <th>Realized PNL</th>
+                                <th>Fees</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="symbol-performance-tbody">
+                            <!-- Performance data will be populated here -->
+                        </tbody>
+                    </table>
+                    <div id="no-performance" class="no-data">No performance data available</div>
                 </div>
+            </div>
 
-                <div class="card recent-trades">
-                    <h2>Recent Trades with PNL</h2>
+            <!-- Recent Trades -->
+            <div class="card recent-trades">
+                <h2>Recent Trades with PNL</h2>
                 <div class="table-container">
                     <table id="trades-table">
                         <thead>
@@ -159,33 +168,32 @@
                                 <th>Order Type</th>
                             </tr>
                         </thead>
-                            <tbody id="trades-tbody">
-                                <!-- Trades will be populated here -->
-                            </tbody>
-                        </table>
-                    </div>
+                        <tbody id="trades-tbody">
+                            <!-- Trades will be populated here -->
+                        </tbody>
+                    </table>
                 </div>
+            </div>
 
-                <!-- Live Liquidations Feed -->
-                <div class="card live-liquidations">
-                    <h2>Live Liquidations</h2>
-                    <div class="table-container">
-                        <table id="liquidations-table">
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Symbol</th>
-                                    <th>Side</th>
-                                    <th>Quantity</th>
-                                    <th>Price</th>
-                                    <th>Value (USDT)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="liquidations-tbody">
-                                <!-- Liquidations will be populated here -->
-                            </tbody>
-                        </table>
-                    </div>
+            <!-- Live Liquidations Feed -->
+            <div class="card live-liquidations">
+                <h2>Live Liquidations</h2>
+                <div class="table-container">
+                    <table id="liquidations-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Value (USDT)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="liquidations-tbody">
+                            <!-- Liquidations will be populated here -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

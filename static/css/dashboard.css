@@ -864,7 +864,8 @@ tbody tr:hover {
 .liquidations-section,
 .trades-section,
 .symbol-performance,
-.config-section {
+.config-section,
+.pnl-section {
     grid-column: 1 / -1;
 }
 
@@ -1081,19 +1082,328 @@ tbody tr:hover {
     margin-bottom: 15px;
 }
 
-/* New Balance Styles */
+/* Account & Performance Overview Styles */
+.account-performance-overview .card {
+    min-height: 400px;
+    padding: 25px;
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    animation: cardFadeIn 0.5s ease-out;
+}
+
+@keyframes cardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.overview-header {
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.overview-header h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 5px 0;
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.overview-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.overview-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Section Titles */
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+}
+
+.section-title::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-success));
+    border-radius: 1px;
+}
+
+/* Combined Sections - Clean and Uniform */
+.balance-section,
+.pnl-metrics-section {
+    padding: 15px;
+}
+
+.balance-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.pnl-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.metric-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    min-height: 120px;
+}
+
+.metric-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+}
+
+.metric-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    margin-bottom: 8px;
+    line-height: 1;
+}
+
+.metric-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    text-align: center;
+}
+
+.metric-change,
+.metric-percent {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 4px;
+    text-align: center;
+}
+
+.metric-percent.positive {
+    color: var(--accent-success);
+}
+
+.metric-percent.negative {
+    color: var(--accent-danger);
+}
+
+
+
+/* PNL Chart Specific */
+.pnl-chart {
+    max-height: 400px;
+}
+
+.pnl-chart canvas {
+    max-height: 320px !important;
+    width: 100% !important;
+    height: auto !important;
+}
+
+/* PNL Section */
+.pnl-section {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 25px;
+}
+
+.pnl-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    min-height: 100px;
+}
+
+.pnl-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: var(--accent-success);
+    transition: all 0.3s ease;
+}
+
+.pnl-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    border-color: var(--accent-success);
+}
+
+.pnl-item.primary::before {
+    background: var(--accent-primary);
+}
+
+.pnl-item.success::before {
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-success));
+}
+
+.pnl-item.info::before {
+    background: var(--accent-warning);
+}
+
+.pnl-item.neutral::before {
+    background: var(--accent-info);
+}
+
+.pnl-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+}
+
+.pnl-content label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pnl-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    line-height: 1.2;
+}
+
+.pnl-percent {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.pnl-percent.positive {
+    color: var(--accent-success);
+    background: rgba(34, 197, 94, 0.15);
+}
+
+.pnl-percent.negative {
+    color: var(--accent-danger);
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.pnl-trend {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.pnl-trend.up {
+    color: var(--accent-success);
+}
+
+.pnl-trend.down {
+    color: var(--accent-danger);
+}
+
+.win-rate-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--accent-primary);
+    width: fit-content;
+}
+
+.win-rate-badge.excellent {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--accent-success);
+}
+
+.win-rate-badge.good {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--accent-warning);
+}
+
+.win-rate-badge.poor {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-danger);
+}
+
+.trades-indicator {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* Enhanced visual hierarchy for positive/negative values */
+.positive {
+    color: var(--accent-success) !important;
+}
+
+.negative {
+    color: var(--accent-danger) !important;
+}
+
+/* Legacy balance styles (kept for backward compatibility) */
 .balance-overview .card {
     min-height: 200px;
 }
 
-.balance-grid {
+.old-balance-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 20px;
     margin-bottom: 20px;
 }
 
-.balance-item {
+.old-balance-item {
     display: flex;
     flex-direction: column;
     padding: 15px;
@@ -1102,7 +1412,7 @@ tbody tr:hover {
     border: 1px solid var(--border-color);
 }
 
-.balance-item label {
+.old-balance-item label {
     font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 8px;
@@ -1110,45 +1420,35 @@ tbody tr:hover {
     letter-spacing: 0.5px;
 }
 
-.balance-value {
+.old-balance-value {
     font-size: 24px;
     font-weight: 600;
     color: var(--text-primary);
 }
 
-.balance-value.positive {
+.old-balance-value.positive {
     color: var(--accent-success);
 }
 
-.balance-value.negative {
+.old-balance-value.negative {
     color: var(--accent-danger);
 }
 
 /* PNL Section */
-.pnl-section {
+.pnl-slice,
+.pnl-analytics {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
 }
 
-.pnl-section .card {
-    min-height: auto;
-}
 
-.pnl-chart .card {
-    min-height: 350px;
-}
-
-.pnl-chart canvas {
-    max-height: 300px !important;
-}
-
-.recent-trades .card {
+.pnl-trades-section .card {
     max-height: 400px;
     overflow: hidden;
 }
 
-.recent-trades .table-container {
+.pnl-trades-section .table-container {
     max-height: 300px;
     overflow-y: auto;
 }
@@ -1318,6 +1618,48 @@ tbody tr:hover {
         grid-template-columns: 1fr;
     }
 
+    .pnl-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Make balance and pnl items stack on mobile */
+    .balance-item {
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+    }
+
+    .pnl-item {
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+    }
+
+    .balance-content,
+    .pnl-content {
+        align-items: center;
+    }
+
+    /* Adjust section padding on mobile */
+    .balance-section,
+    .pnl-section {
+        padding: 15px;
+    }
+
+    .overview-content {
+        gap: 20px;
+    }
+
+    /* Stack divider on mobile */
+    .section-divider {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .account-performance-overview .card {
+        padding: 15px;
+    }
+
     .pnl-section .card {
         grid-column: span 1;
     }
@@ -1328,5 +1670,21 @@ tbody tr:hover {
 
     #min-notional-modal .fix-btn {
         width: 100%;
+    }
+}
+
+/* Tablet responsive adjustments */
+@media (max-width: 1024px) {
+    .balance-grid,
+    .pnl-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .account-performance-overview .card {
+        padding: 20px;
+    }
+
+    .overview-content {
+        gap: 25px;
     }
 }

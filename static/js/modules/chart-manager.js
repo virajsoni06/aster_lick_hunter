@@ -144,8 +144,15 @@ window.DashboardModules.ChartManager = (function() {
     function updatePNLChartPrivate(dailyStats) {
         if (!pnlChart || !dailyStats) return;
 
-        // Sort by date
+        // Sort by date and filter to only include days with actual trading activity
         dailyStats.sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+
+        // Filter out days with no profit/loss (showing only days where trading occurred)
+        dailyStats = dailyStats.filter(function(d) {
+            return d.realized_pnl !== null &&
+                   d.realized_pnl !== 0 &&
+                   (d.total_trades > 0 || d.realized_pnl !== 0);
+        });
 
         const labels = dailyStats.map(function(d) {
             const date = new Date(d.date);

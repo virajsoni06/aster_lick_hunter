@@ -152,8 +152,13 @@ class Dashboard {
             // Store wallet and available balance for PNL percentage calculation
             this.walletBalance = parseFloat(data.totalWalletBalance) || 0;
             this.availableBalance = parseFloat(data.availableBalance) || 0;
+            const marginUsed = parseFloat(data.totalPositionInitialMargin) || 0;
+
+            // Calculate total account balance
+            const accountBalance = this.walletBalance + this.availableBalance + marginUsed;
 
             // Update account display
+            this.Utils.updateElement('account-balance', this.Utils.formatCurrency(accountBalance));
             this.Utils.updateElement('wallet-balance', this.Utils.formatCurrency(data.totalWalletBalance));
             this.Utils.updateElement('unrealized-pnl', this.Utils.formatCurrency(data.totalUnrealizedProfit), data.totalUnrealizedProfit);
             this.Utils.updateElement('margin-used', this.Utils.formatCurrency(data.totalPositionInitialMargin));
