@@ -1,8 +1,16 @@
-# 🚀 Aster Liquidation Hunter Bot
+<div align="center">
+  <img src="static/logo.svg" alt="Aster Logo" width="300" />
+
+  # Liquidation Hunter Bot
+
+  🚀 Advanced Cryptocurrency Trading Bot for Aster DEX
+</div>
+
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-active-success)](https://github.com/CryptoGnome/aster_lick_hunter)
 [![Dashboard](https://img.shields.io/badge/dashboard-web--based-orange)](http://localhost:5000)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289DA)](https://discord.gg/P8Ev3Up)
 
 ## 💝 Support Development - This Bot is 100% FREE!
 
@@ -14,336 +22,286 @@
 
 ---
 
-An advanced cryptocurrency trading bot that monitors real-time liquidation events on Aster DEX and executes intelligent counter-trades based on configurable volume thresholds. Features a comprehensive web dashboard for monitoring, analytics, and configuration management.
+## 🎯 What is This Bot?
 
-## 🎯 Key Features
+The **Aster Liquidation Hunter Bot** is an automated trading system that:
+- 🔍 **Monitors** cryptocurrency liquidations in real-time
+- 📊 **Analyzes** market conditions automatically
+- 💰 **Executes** profitable counter-trades
+- 🛡️ **Manages** risk with automated stop-loss and take-profit
 
-### Core Trading Engine
-- **Real-time Liquidation Monitoring** - WebSocket connection to Aster DEX liquidation stream
-- **Volume-Based Triggers** - Executes trades when liquidation volume exceeds configured thresholds
-- **Intelligent Order Placement** - Uses orderbook analysis for optimal entry prices
-- **Automated Risk Management** - Automatic Take Profit and Stop Loss order placement
-- **Hedge Mode Support** - Separate LONG/SHORT position management
-- **Multi-Symbol Trading** - Trade multiple cryptocurrency pairs simultaneously
+Think of it as your automated trading assistant that watches the market 24/7 and trades when big liquidations happen!
 
-### Advanced Features
-- **🆕 Intelligent Tranche System** - Revolutionary position management that automatically splits positions into tranches based on PnL performance
-  - Creates new tranches when existing positions reach configurable loss thresholds
-  - Merges profitable tranches to optimize capital efficiency
-  - Limits maximum tranches per symbol/side for risk control
-  - Configurable PnL increment percentage for tranche triggers (default 5%)
-- **Smart Position Sizing** - Calculates optimal position sizes based on leverage and risk parameters
-- **Order Lifecycle Management** - Automated cleanup of stale orders and position tracking
-- **Real-time P&L Tracking** - Monitor realized and unrealized profits/losses
-- **Simulation Mode** - Test strategies without risking capital
-- **Rate Limit Protection** - Built-in rate limiting with configurable buffer
+## ⚡ Quick Start (5 Minutes!)
 
-### Web Dashboard
-- **Real-time Monitoring** - Live updates via Server-Sent Events (SSE)
-- **Position Management** - View and track all open positions
-- **Trade Analytics** - Comprehensive trade history with P&L metrics
-- **Configuration UI** - Easy symbol addition/removal and parameter adjustment
-- **Performance Charts** - Visual representation of trading performance
-- **Account Overview** - Balance, margin, and exposure monitoring
+### For Complete Beginners
+If you're new to programming or trading bots, we have a special guide just for you:
+👉 **[CLICK HERE FOR BEGINNER'S GUIDE](QUICKSTART.md)** 👈
+
+### For Experienced Users
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/CryptoGnome/aster_lick_hunter.git
+cd aster_lick_hunter
+
+# 2. Install Python dependencies
+pip install -r requirements.txt
+
+# 3. Set up your API keys
+cp .env.example .env
+# Edit .env with your API credentials
+
+# 4. Run the bot
+python launcher.py
+
+# 5. Open dashboard
+# Navigate to http://localhost:5000
+```
 
 ## 📊 Dashboard Preview
 
-<img width="1896" height="954" alt="image" src="https://github.com/user-attachments/assets/3fbba51a-8111-40d8-9a35-c6bf2bd31236" />
+<img width="1896" height="954" alt="Dashboard Screenshot" src="https://github.com/user-attachments/assets/3fbba51a-8111-40d8-9a35-c6bf2bd31236" />
 
+## 🌟 Key Features
 
+### 🤖 Automated Trading
+- **Real-time Liquidation Monitoring** - Connects directly to Aster DEX liquidation stream
+- **Smart Trade Execution** - Analyzes order books for optimal entry prices
+- **Volume-Based Triggers** - Only trades when liquidations exceed your thresholds
+- **Opposite Trading** - Takes the opposite side of liquidations (contrarian strategy)
 
-## 🛠️ Installation
+### 🛡️ Risk Management
+- **Automated Stop-Loss & Take-Profit** - Every trade is protected automatically
+- **Position Size Limits** - Never risk more than you configure
+- **Maximum Exposure Control** - Limits total capital at risk
+- **Hedge Mode Support** - Manage LONG and SHORT positions separately
 
-### Prerequisites
-- Python 3.8 or higher
-- Aster DEX API credentials
-- Git (for cloning the repository)
+### 📈 Advanced Features
 
-### Quick Start
+#### 🆕 Position Monitor System
+- **Unified TP/SL Management** - Centralized control of all protective orders
+- **Real-time Price Monitoring** - WebSocket-based instant price tracking
+- **Instant Profit Capture** - Closes positions immediately when profit targets are exceeded
+- **Thread-Safe Operations** - Re-entrant lock protection for reliability
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/CryptoGnome/aster_lick_hunter.git
-cd aster_lick_hunter
-```
+#### 🆕 Intelligent Tranche System
+- **Dynamic Position Scaling** - Automatically splits positions into tranches
+- **Loss-Based Triggers** - Creates new tranches at configurable loss thresholds
+- **Profit Optimization** - Merges profitable tranches to maximize capital efficiency
+- **Risk Limiting** - Maximum tranches per symbol/side for controlled exposure
 
-2. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+#### 🆕 Order Batching & Buffering
+- **Batch Order Submission** - Combines multiple orders for efficiency
+- **Liquidation Buffering** - Collects liquidations before processing
+- **API Rate Optimization** - Reduces API calls by up to 70%
+- **Configurable Windows** - Adjust batch timing to your needs
 
-3. **Configure environment variables**
-```bash
-# Create .env file
-cp .env.example .env
+### 📊 Web Dashboard
+- **Real-time Updates** - Live position and P&L tracking
+- **Trade History** - Complete record of all trades
+- **Performance Analytics** - Charts and statistics
+- **Easy Configuration** - Change settings without editing files
+- **Mobile Responsive** - Monitor from any device
 
-# Edit .env with your API credentials
-API_KEY=your_api_key_here
-API_SECRET=your_api_secret_here
-```
+## 🔧 Configuration Guide
 
-4. **Configure trading parameters**
-```bash
-# Edit settings.json to customize your trading strategy
-nano settings.json
-```
-
-5. **Run the bot**
-```bash
-# Run both bot and dashboard
-python launcher.py
-
-# Or run components separately
-python main.py                # Bot only
-python src/api/api_server.py  # Dashboard only
-```
-
-6. **Access the dashboard**
-```
-Open your browser and navigate to: http://localhost:5000
-```
-
-## ⚙️ Configuration
-
-### Global Settings (`settings.json`)
-<img width="1062" height="665" alt="image" src="https://github.com/user-attachments/assets/1393efa4-34bc-4575-9a05-b80e4efc98cc" />
-
+### Essential Settings
 
 ```json
 {
   "globals": {
-    "volume_window_sec": 60,        // Time window for volume calculation
-    "simulate_only": false,         // Enable simulation mode
-    "multi_assets_mode": true,      // Use multi-assets margin
-    "hedge_mode": true,            // Enable hedge mode
-    "order_ttl_seconds": 30,       // Order time-to-live
-    "max_open_orders_per_symbol": 5,
-    "max_total_exposure_usdt": 1000.0,
-    "tranche_pnl_increment_pct": 5.0,  // PnL threshold for new tranche creation
-    "max_tranches_per_symbol_side": 5  // Maximum tranches per symbol/side
-  }
-}
-```
-
-### Symbol Configuration
-
-```json
-{
+    "simulate_only": true,              // START IN SIMULATION MODE!
+    "volume_window_sec": 60,            // Time window for volume calculation
+    "max_total_exposure_usdt": 1000,    // Maximum total risk
+    "use_position_monitor": true,       // Enable advanced position management
+    "instant_tp_enabled": true          // Enable instant profit capture
+  },
   "symbols": {
     "BTCUSDT": {
-      "volume_threshold": 20000,     // USDT volume trigger threshold
-      "leverage": 10,                // Trading leverage
-      "trade_value_usdt": 100,      // Position size in USDT
-      "price_offset_pct": 0.1,      // Entry price offset from market
-      "take_profit_pct": 2.0,       // Take profit percentage
-      "stop_loss_pct": 1.0,         // Stop loss percentage
-      "max_position_usdt": 1000     // Maximum position size
+      "volume_threshold_long": 100000,  // Min liquidation volume to trade
+      "leverage": 10,                   // Trading leverage
+      "trade_value_usdt": 100,         // Position size
+      "take_profit_pct": 2.0,          // Take profit at 2%
+      "stop_loss_pct": 1.0             // Stop loss at 1%
     }
   }
 }
 ```
 
-## 🏗️ Architecture
+### Important Configuration Tips
+- ⚠️ **ALWAYS start with `simulate_only: true`**
+- 💡 Start with small `trade_value_usdt` (like $10-20)
+- 📊 Monitor for a few days before going live
+- 🎯 Adjust `volume_threshold` based on market activity
 
-### System Components
+## 📚 Documentation
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     WebSocket Streams                       │
-│  ┌──────────────────┐        ┌──────────────────┐         │
-│  │ Liquidation Data │        │ User Data Stream │         │
-│  └────────┬─────────┘        └────────┬─────────┘         │
-│           │                            │                    │
-│  ┌────────▼─────────────────────────────▼─────────┐       │
-│  │            Core Trading Engine                  │       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐    │       │
-│  │  │ Streamer │  │  Trader  │  │  Order   │    │       │
-│  │  │          │  │          │  │ Manager  │    │       │
-│  │  └──────────┘  └──────────┘  └──────────┘    │       │
-│  └──────────────────┬───────────────────────────┘        │
-│                     │                                      │
-│  ┌──────────────────▼───────────────────────────┐        │
-│  │              Database Layer                   │        │
-│  │  ┌──────────────────────────────────────┐   │        │
-│  │  │ SQLite: liquidations, trades, orders │   │        │
-│  │  └──────────────────────────────────────┘   │        │
-│  └───────────────────┬──────────────────────────┘        │
-│                      │                                     │
-│  ┌───────────────────▼──────────────────────────┐        │
-│  │            Web Dashboard API                  │        │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  │        │
-│  │  │   Flask  │  │   SSE    │  │   PNL    │  │        │
-│  │  │  Server  │  │  Events  │  │ Tracker  │  │        │
-│  │  └──────────┘  └──────────┘  └──────────┘  │        │
-│  └───────────────────────────────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
+### For Users
+- 📖 **[Quickstart Guide](QUICKSTART.md)** - Get started in 5 minutes
+- 🔧 **[Configuration Guide](docs/CONFIGURATION.md)** - Detailed settings explanation
+- ❓ **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
+- 📊 **[Trading Strategies](docs/STRATEGIES.md)** - Optimize your settings
 
-### Data Flow
+### For Developers
+- 🏗️ **[Architecture Overview](docs/ARCHITECTURE.md)** - System design
+- 🔌 **[API Reference](docs/API_REFERENCE.md)** - Endpoint documentation
+- 🧪 **[Testing Guide](docs/TESTING.md)** - Run and write tests
+- 🤝 **[Contributing](CONTRIBUTING.md)** - How to contribute
 
-1. **Liquidation Detection** → WebSocket receives liquidation event
-2. **Data Storage** → Event stored in SQLite database
-3. **Volume Analysis** → Calculate volume in time window
-4. **Trade Decision** → Evaluate against configured thresholds
-5. **Order Execution** → Place limit order with optimal pricing
-6. **Risk Management** → Automatic TP/SL order placement
-7. **Position Tracking** → Real-time position and P&L updates
+### Advanced Topics
+- 🎯 **[Position Monitor](docs/POSITION_MONITOR.md)** - Advanced position management
+- 📈 **[Tranche System](docs/TRANCHES.md)** - Dynamic position scaling
+- ⚡ **[Performance Tuning](docs/PERFORMANCE.md)** - Optimize speed and efficiency
 
-## 📈 Trading Strategy
+## 🚦 System Requirements
 
-The bot implements a counter-trend strategy based on liquidation cascades with advanced tranche management:
+### Minimum Requirements
+- **OS**: Windows 10/11, macOS 10.14+, Ubuntu 20.04+
+- **Python**: 3.8 or higher
+- **RAM**: 2GB minimum, 4GB recommended
+- **Storage**: 500MB free space
+- **Internet**: Stable broadband connection
 
-1. **Monitor** - Continuously monitor liquidation events
-2. **Aggregate** - Calculate total liquidation volume in rolling window
-3. **Trigger** - Execute trade when volume exceeds threshold
-4. **Position** - Take opposite position to liquidation direction
-5. **Tranche Management** - Intelligently manage positions through tranches:
-   - Create new tranches when losses exceed PnL threshold (default 5%)
-   - Merge profitable tranches to optimize capital efficiency
-   - Limit maximum tranches per symbol/side for risk control
-6. **Manage** - Set automatic take profit and stop loss levels
-7. **Track** - Monitor position performance in real-time
+### Recommended Setup
+- **VPS/Cloud**: AWS, DigitalOcean, or similar for 24/7 operation
+- **Python**: 3.10 or 3.11 for best performance
+- **RAM**: 4GB or more
+- **CPU**: 2+ cores
 
-### Example Trade Flow with Tranche System
+## 🏗️ Architecture Overview
 
-```
-Liquidation Detected:
-  └─> Symbol: BTCUSDT
-  └─> Side: LONG liquidated
-  └─> Volume: $25,000
+```mermaid
+graph TD
+    A[Aster DEX WebSocket] --> B[Liquidation Stream]
+    B --> C[Volume Analyzer]
+    C --> D{Threshold Met?}
+    D -->|Yes| E[Order Placement]
+    D -->|No| F[Continue Monitoring]
+    E --> G[Position Monitor]
+    G --> H[TP/SL Management]
+    H --> I[Dashboard Updates]
 
-Volume Check:
-  └─> 60s window: $45,000
-  └─> Threshold: $20,000 ✓
-
-Execute Trade (Tranche 0):
-  └─> Side: SHORT (opposite)
-  └─> Size: $100 × 10 leverage = $1,000 position
-  └─> Entry: $98,500 (0.1% below market)
-  └─> Tranche ID: 0 (first position)
-
-Risk Management:
-  └─> Take Profit: $96,530 (2% profit)
-  └─> Stop Loss: $99,485 (1% loss)
-
-If Price Moves Against (Loss > 5%):
-  └─> New Liquidation Triggers
-  └─> Create Tranche 1 (separate from Tranche 0)
-  └─> Independent entry price tracking
-  └─> Automatic merge when profitable
+    J[User Data Stream] --> G
+    K[Database Layer] --> L[Trade History]
+    K --> M[Performance Metrics]
+    L --> I
+    M --> I
 ```
 
-## 🔒 Security Features
+## 📈 How It Works
 
-- **API Key Encryption** - Secure storage of credentials in `.env` file
-- **HMAC Authentication** - SHA256 signature-based API authentication
-- **Rate Limiting** - Built-in protection against API rate limits
-- **Order Validation** - Pre-trade checks for position limits
-- **Error Handling** - Comprehensive error catching and logging
-- **Graceful Shutdown** - Clean disconnection and resource cleanup
+### The Trading Logic
 
-## 📝 API Documentation
+1. **🔍 Monitor** - Bot watches for liquidation events 24/7
+2. **📊 Analyze** - Calculates total liquidation volume in time window
+3. **✅ Trigger** - When volume exceeds threshold, prepare to trade
+4. **🎯 Execute** - Place opposite trade (SHORT if longs liquidated)
+5. **🛡️ Protect** - Automatically set stop-loss and take-profit
+6. **📈 Manage** - Monitor position and adjust as needed
+7. **💰 Profit** - Close at profit target or manage risk
 
-### REST Endpoints
+### Example Trade
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Dashboard UI |
-| `/api/positions` | GET | Current positions |
-| `/api/account` | GET | Account information |
-| `/api/trades` | GET | Trade history |
-| `/api/liquidations` | GET | Recent liquidations |
-| `/api/stats` | GET | Performance statistics |
-| `/api/config` | GET/POST | Configuration management |
-| `/api/stream` | GET | Real-time SSE stream |
-
-### WebSocket Streams
-
-- **Liquidation Stream**: `wss://fstream.asterdex.com/stream?streams=!forceOrder@arr`
-- **User Data Stream**: Account updates, order updates, position changes
-
-## 🧪 Testing
-
-### Simulation Mode
-
-Enable simulation mode to test strategies without real trades:
-
-```json
-{
-  "globals": {
-    "simulate_only": true
-  }
-}
 ```
+🔴 Large Liquidation Detected:
+├── Symbol: BTCUSDT
+├── Type: LONG positions liquidated
+├── Volume: $150,000
+└── Action: Preparing SHORT trade
 
-### Unit Tests
+📊 Volume Analysis:
+├── 60-second window: $250,000
+├── Threshold: $100,000
+└── Decision: ✅ EXECUTE TRADE
 
-```bash
-# Run test suite
-python -m pytest tests/
-
-# Run with coverage
-python -m pytest --cov=src tests/
+💼 Trade Execution:
+├── Side: SHORT (opposite of liquidation)
+├── Entry: $65,432 (0.1% below market)
+├── Size: $1,000 (100 USDT × 10 leverage)
+├── Take Profit: $64,123 (2% profit)
+├── Stop Loss: $66,086 (1% loss)
+└── Status: ✅ Orders Placed
 ```
-
-## 📊 Performance Metrics
-
-- **Response Time**: < 100ms order placement
-- **WebSocket Latency**: < 50ms message processing
-- **Database Queries**: Indexed for < 10ms response
-- **Dashboard Updates**: Real-time via SSE
-- **Memory Usage**: < 200MB typical operation
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 ## ⚠️ Risk Warning
 
-**IMPORTANT**: Cryptocurrency trading carries significant risk. This bot is provided as-is without any guarantee of profit. Always:
+**IMPORTANT: Cryptocurrency trading carries significant risk!**
 
-- Start with small position sizes
-- Test thoroughly in simulation mode
-- Never invest more than you can afford to lose
-- Monitor the bot's operation regularly
-- Understand the code before using real funds
+- 📉 You can lose all your invested capital
+- 🎰 Past performance doesn't guarantee future results
+- 📚 Understand the strategy before using real money
+- 💵 Never invest more than you can afford to lose
+- 🧪 ALWAYS test in simulation mode first
+- 👀 Monitor the bot regularly, don't "set and forget"
+
+## 🤝 Community & Support
+
+### Get Help
+- 💬 **[Discord Community](https://discord.gg/P8Ev3Up)** - Get help and share strategies
+- 🐛 **[Report Issues](https://github.com/CryptoGnome/aster_lick_hunter/issues)** - Bug reports
+- 💡 **[Discussions](https://github.com/CryptoGnome/aster_lick_hunter/discussions)** - Feature requests
+- 📚 **[Wiki](https://github.com/CryptoGnome/aster_lick_hunter/wiki)** - Detailed guides
+
+### Contributing
+We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## 📊 Performance Metrics
+
+### System Performance
+- **Response Time**: < 100ms order placement
+- **WebSocket Latency**: < 50ms processing
+- **Memory Usage**: ~150-200MB typical
+- **CPU Usage**: < 5% on modern systems
+
+### Trading Performance
+- Results vary based on market conditions and settings
+- Past performance does not guarantee future results
+- Always monitor and adjust your strategy
+
+## 🔒 Security
+
+### Built-in Protections
+- 🔐 API credentials stored in `.env` file (never in code)
+- 🛡️ HMAC SHA256 signature authentication
+- ⚡ Rate limit protection with smart buffering
+- 🔍 Pre-trade validation checks
+- 💾 Database backups and recovery
+
+### Best Practices
+- Use API keys with trading permissions only
+- Enable IP whitelist on Aster DEX
+- Regularly update the bot
+- Monitor for unusual activity
+- Keep your system secure and updated
+
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- Aster DEX for providing the trading API
-- The open-source community for invaluable tools and libraries
-- Contributors and testers who helped improve the bot
+- **Aster DEX** - For providing the trading platform and API
+- **Community Contributors** - For testing and improvements
+- **Open Source Libraries** - Making this project possible
 
-## 📞 Support
+## 🚀 Quick Links
 
-- **Discord Community**: [Join our Discord](https://discord.gg/P8Ev3Up) - Get help, share strategies, and connect with other traders
-- **Issues**: [GitHub Issues](https://github.com/CryptoGnome/aster_lick_hunter/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/CryptoGnome/aster_lick_hunter/discussions)
-- **Documentation**: [Wiki](https://github.com/CryptoGnome/aster_lick_hunter/wiki)
-
-## 🚦 Status
-
-- ✅ Core Trading Engine
-- ✅ WebSocket Integration
-- ✅ Database Layer
-- ✅ Order Management
-- ✅ Web Dashboard
-- ✅ Real-time Updates
-- ✅ P&L Tracking
-- ✅ Configuration UI
-- ✅ Intelligent Tranche System
+- 🏠 **[Homepage](https://github.com/CryptoGnome/aster_lick_hunter)**
+- 📖 **[Documentation](https://github.com/CryptoGnome/aster_lick_hunter/wiki)**
+- 💬 **[Discord](https://discord.gg/P8Ev3Up)**
+- 🐛 **[Issues](https://github.com/CryptoGnome/aster_lick_hunter/issues)**
+- ⭐ **[Star on GitHub](https://github.com/CryptoGnome/aster_lick_hunter)**
 
 ---
+
+<p align="center">
+  <b>⚡ Start in Simulation Mode | 📚 Read the Docs | 💬 Join Discord | 🚀 Trade Safely!</b>
+</p>
 
 <p align="center">
   Made with ❤️ by the Aster Liquidation Hunter Team
