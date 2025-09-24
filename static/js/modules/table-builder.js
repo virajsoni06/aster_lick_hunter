@@ -105,10 +105,17 @@ window.DashboardModules.TableBuilder = (function() {
 
         // Add click handler for close button
         const closeBtn = row.querySelector('.close-position-btn');
-        closeBtn.addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent row click from firing
-            // This will be handled by the dashboard
-        });
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent row click from firing
+                // Trigger the close position action directly
+                const symbol = e.target.dataset.symbol;
+                const side = e.target.dataset.side;
+                if (window.dashboard && window.dashboard.PositionManager) {
+                    window.dashboard.PositionManager.closePosition(symbol, side);
+                }
+            });
+        }
 
         return row;
     }

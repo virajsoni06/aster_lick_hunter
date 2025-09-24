@@ -708,6 +708,12 @@ class Dashboard {
             });
         }
 
+        // Setup cancel button listener
+        const cancelBtn = document.getElementById('cancel-close-btn');
+        if (cancelBtn) {
+            cancelBtn.onclick = () => this.closeClosePositionModal();
+        }
+
         // Setup modal close handlers
         const modalCloseBtn = modal.querySelector('.modal-close');
         if (modalCloseBtn) {
