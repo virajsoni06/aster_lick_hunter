@@ -154,43 +154,81 @@ async def fetch_exchange_info():
 
 def format_price(symbol, price):
     """Format price with correct precision and tick size for the symbol."""
+    # First ensure we have the latest specs from exchange
     if symbol not in symbol_specs:
-        # Fallback to 6 decimals (do NOT strip trailing zeros)
-        return f"{price:.6f}"
+        log.warning(f"Symbol {symbol} not in specs cache, fetching...")
+        # Try to fetch exchange info if not cached
+        import asyncio
+        try:
+            asyncio.create_task(fetch_exchange_info())
+        except:
+            pass
+        # Fallback to 2 decimals for safety
+        return f"{price:.2f}"
 
     specs = symbol_specs[symbol]
-    tick_size = specs.get('tickSize')
+    tick_size = specs.get('tickSize', 0.01)
+    precision = int(specs.get('pricePrecision', 2))
 
     # Round to tick size if available
     if tick_size and tick_size > 0:
-        # Round to nearest tick
-        price = round(price / tick_size) * tick_size
+        # Round to nearest tick (use decimal to avoid float precision issues)
+        from decimal import Decimal, ROUND_DOWN
+        tick_decimal = Decimal(str(tick_size))
+        price_decimal = Decimal(str(price))
 
-    # Format with correct precision (do NOT strip trailing zeros)
-    precision = specs.get('pricePrecision', 2)
-    return f"{price:.{precision}f}"
+        # Round down to nearest tick to avoid exceeding precision
+        ticks = int(price_decimal / tick_decimal)
+        price = float(ticks * tick_decimal)
+
+    # IMPORTANT: Use the exact pricePrecision from the exchange
+    # Do not try to calculate decimals from tick_size as they may differ
+    # For ASTERUSDT: pricePrecision=5, tickSize=0.00010 (both 5 decimals)
+    # But for other symbols they might differ
+
+    # Format with the exchange-specified precision
+    formatted = f"{price:.{precision}f}"
+
+    # Verify we haven't exceeded precision (safety check)
+    if '.' in formatted:
+        decimal_places = len(formatted.split('.')[-1])
+        if decimal_places > precision:
+            log.error(f"Price {formatted} exceeds precision {precision} for {symbol}")
+            # Truncate to precision
+            formatted = f"{price:.{precision}f}"
+
+    return formatted
 
 def format_quantity(symbol, qty):
     """Format quantity with correct precision and step size for the symbol."""
     if symbol not in symbol_specs:
-        # Fallback to 6 decimals, strip trailing zeros
-        formatted = f"{qty:.6f}"
+        log.warning(f"Symbol {symbol} not in specs cache for quantity formatting")
+        # Fallback to 3 decimals, strip trailing zeros
+        formatted = f"{qty:.3f}"
         return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
 
     specs = symbol_specs[symbol]
-    step_size = specs.get('stepSize', 0.001)  # Default step size if not available
+    step_size = specs.get('stepSize', 0.001)
+    precision = int(specs.get('quantityPrecision', 2))
 
-    # Round down to nearest step size
+    # Round to step size using Decimal for accuracy
     if step_size > 0:
-        qty = math.floor(qty / step_size) * step_size
+        from decimal import Decimal, ROUND_DOWN
+        step_decimal = Decimal(str(step_size))
+        qty_decimal = Decimal(str(qty))
 
-    # Round to correct precision
-    precision = specs.get('quantityPrecision', 2)
-    qty_rounded = round(qty, precision)
+        # Round down to nearest step (avoid exceeding max)
+        steps = int(qty_decimal / step_decimal)
+        qty = float(steps * step_decimal)
 
-    # Format with correct precision and strip trailing zeros
-    formatted = f"{qty_rounded:.{precision}f}"
-    return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+    # Format with the exchange-specified precision
+    formatted = f"{qty:.{precision}f}"
+
+    # Strip trailing zeros for quantity (safe and cleaner)
+    if '.' in formatted:
+        formatted = formatted.rstrip('0').rstrip('.')
+
+    return formatted
 
 def calculate_quantity_from_usdt(symbol, usdt_value, current_price):
     """Calculate the quantity to trade based on USDT value (position size) and current price."""
@@ -678,21 +716,37 @@ def get_orderbook_price(symbol, side, fallback_price, offset_pct):
             if spread > best_bid * 0.002:  # If spread > 0.2%
                 # Place inside the spread, closer to bid
                 price = best_bid + (spread * 0.2)  # 20% into the spread
-                log.info(f"Wide spread, placing BUY at {price:.6f} (20% into spread)")
             else:
                 # Tight spread, join or improve best bid slightly
-                price = best_bid + (best_bid * 0.0001)  # Improve by 0.01%
-                log.info(f"Tight spread, placing BUY at {price:.6f} (improving bid)")
+                # First get the tick size for proper improvement
+                specs = symbol_specs.get(symbol, {})
+                tick_size = specs.get('tickSize', 0.01)
+                # Improve by one tick or 0.01% whichever is larger
+                improvement = max(tick_size, best_bid * 0.0001)
+                price = best_bid + improvement
+
+            # Format price with tick size to ensure proper alignment
+            formatted_price = format_price(symbol, price)
+            log.info(f"{'Wide' if spread > best_bid * 0.002 else 'Tight'} spread, placing BUY at {formatted_price} (improving bid)")
+            price = float(formatted_price)
         else:  # SELL
             # For sell orders, place at or just below best ask
             if spread > best_ask * 0.002:  # If spread > 0.2%
                 # Place inside the spread, closer to ask
                 price = best_ask - (spread * 0.2)  # 20% into the spread
-                log.info(f"Wide spread, placing SELL at {price:.6f} (20% into spread)")
             else:
                 # Tight spread, join or improve best ask slightly
-                price = best_ask - (best_ask * 0.0001)  # Improve by 0.01%
-                log.info(f"Tight spread, placing SELL at {price:.6f} (improving ask)")
+                # First get the tick size for proper improvement
+                specs = symbol_specs.get(symbol, {})
+                tick_size = specs.get('tickSize', 0.01)
+                # Improve by one tick or 0.01% whichever is larger
+                improvement = max(tick_size, best_ask * 0.0001)
+                price = best_ask - improvement
+
+            # Format price with tick size to ensure proper alignment
+            formatted_price = format_price(symbol, price)
+            log.info(f"{'Wide' if spread > best_ask * 0.002 else 'Tight'} spread, placing SELL at {formatted_price} (improving ask)")
+            price = float(formatted_price)
 
         return price
 
