@@ -975,6 +975,17 @@ class PositionMonitor:
 
     async def instant_close_tranche(self, tranche: Tranche, mark_price: float):
         """Close tranche immediately at market price."""
+        # Check if circuit breaker is active for this tranche
+        if hasattr(tranche, '_instant_close_disabled_until'):
+            if time.time() < tranche._instant_close_disabled_until:
+                # Still in cooldown period
+                return
+            else:
+                # Cooldown expired, reset failure counter
+                delattr(tranche, '_instant_close_disabled_until')
+                if hasattr(tranche, '_instant_close_failures'):
+                    tranche._instant_close_failures = 0
+
         logger.warning(f"INSTANT PROFIT CAPTURE: Closing tranche {tranche.id} for {tranche.symbol}")
 
         # First check if position still exists on exchange
@@ -1031,14 +1042,16 @@ class PositionMonitor:
             'symbol': tranche.symbol,
             'side': close_side,
             'type': 'MARKET',
-            'quantity': str(quantity),
-            'reduceOnly': 'true'  # Required for closing positions
+            'quantity': str(quantity)
         }
 
         # Add positionSide in hedge mode
         if self.hedge_mode:
             position_side = self._get_position_side('BUY' if tranche.side == 'LONG' else 'SELL')
             market_order['positionSide'] = position_side
+        else:
+            # Only add reduceOnly if NOT in hedge mode (reduceOnly cannot be sent in Hedge Mode)
+            market_order['reduceOnly'] = 'true'
 
         result = await self._place_single_order(market_order)
 
@@ -1092,30 +1105,57 @@ class PositionMonitor:
                 logger.error(f"Error updating database for instant closure: {e}")
 
         else:
-            # Check if this is the specific error about reduceOnly not being required
-            try:
-                import json
-                error_data = json.loads(result.get('msg', '{}') if isinstance(result, dict) else result or '{}')
-                error_code = error_data.get('code') if isinstance(error_data, dict) else None
+            # Parse error response
+            error_msg = str(result)
+            error_code = None
 
-                # Error code -1106 means 'Parameter 'reduceOnly' sent when not required'
-                if error_code == -1106:
-                    logger.warning(f"Position {tranche.symbol} tranche {tranche.id} already closed (error -1106), removing from monitor")
-                    # Remove tranche from tracking since position no longer exists
-                    self.remove_tranche(tranche.symbol, tranche.side, tranche.id)
-                    # Cancel any remaining orders
-                    if tranche.tp_order_id:
-                        await self._cancel_order(tranche.symbol, tranche.tp_order_id)
-                    if tranche.sl_order_id:
-                        await self._cancel_order(tranche.symbol, tranche.sl_order_id)
-                    return
-                else:
-                    logger.error(f"Failed to place market order for instant closure: {result}")
-            except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                logger.error(f"Failed to place market order for instant closure: {result}")
-                logger.error(f"Error parsing response: {e}")
+            # Extract error code from various response formats
+            if isinstance(result, dict):
+                if 'error' in result and isinstance(result['error'], dict):
+                    error_code = result['error'].get('code')
+                    error_msg = result['error'].get('msg', error_msg)
+                elif 'code' in result:
+                    error_code = result.get('code')
+                    error_msg = result.get('msg', error_msg)
 
-            # Re-enable TP order tracking since we couldn't close
-            tranche.tp_order_id = tranche.tp_order_id
-            # Don't trigger instant closure again for this tranche within a short timeframe
-            logger.info(f"Temporarily disabling instant closure for tranche {tranche.id} to prevent loops")
+            # Handle specific error codes
+            if error_code == -1106:
+                # This error should not occur anymore with our fix, but handle it anyway
+                logger.warning(f"Got -1106 error (reduceOnly issue) for {tranche.symbol} tranche {tranche.id}")
+                logger.warning("This indicates a bug in the order parameter logic - position may already be closed")
+                # Clean up the tranche since position likely doesn't exist
+                self.remove_tranche(tranche.symbol, tranche.side, tranche.id)
+                # Cancel any remaining orders
+                if tranche.tp_order_id:
+                    await self._cancel_order(tranche.symbol, tranche.tp_order_id)
+                if tranche.sl_order_id:
+                    await self._cancel_order(tranche.symbol, tranche.sl_order_id)
+                return
+            elif error_code == -2022:
+                # ReduceOnly Order is rejected (position doesn't exist)
+                logger.warning(f"Position {tranche.symbol} tranche {tranche.id} doesn't exist, removing from monitor")
+                self.remove_tranche(tranche.symbol, tranche.side, tranche.id)
+                # Cancel any remaining orders
+                if tranche.tp_order_id:
+                    await self._cancel_order(tranche.symbol, tranche.tp_order_id)
+                if tranche.sl_order_id:
+                    await self._cancel_order(tranche.symbol, tranche.sl_order_id)
+                return
+            elif error_code == -2019:
+                # Margin insufficient
+                logger.error(f"Insufficient margin to close position {tranche.symbol} tranche {tranche.id}")
+            else:
+                logger.error(f"Failed to place market order for instant closure: {error_msg}")
+                if error_code:
+                    logger.error(f"Error code: {error_code}")
+
+            # Implement circuit breaker - disable instant closure for this tranche temporarily
+            if not hasattr(tranche, '_instant_close_failures'):
+                tranche._instant_close_failures = 0
+            tranche._instant_close_failures += 1
+
+            if tranche._instant_close_failures >= 3:
+                logger.warning(f"Circuit breaker activated: Disabling instant closure for tranche {tranche.id} after {tranche._instant_close_failures} failures")
+                tranche._instant_close_disabled_until = time.time() + 300  # Disable for 5 minutes
+            else:
+                logger.info(f"Temporarily disabling instant closure for tranche {tranche.id} (failure {tranche._instant_close_failures}/3)")

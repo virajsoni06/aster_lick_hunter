@@ -20,8 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mobile Responsiveness** - Better dashboard experience on mobile devices
 - **Documentation Suite** - QUICKSTART, TROUBLESHOOTING, CONTRIBUTING guides
 - **Enhanced README** - User-friendly structure with video tutorials and feature details
+- **Circuit Breaker Pattern** - Prevents infinite error loops in instant profit capture
+- **Enhanced Error Handling** - Improved error code detection and recovery mechanisms
 
 ### 🔧 Fixed
+- **Instant Profit Capture -1106 Error** - Fixed critical bug causing "Parameter 'reduceOnly' sent when not required" errors
+  - Position monitor now correctly handles order parameters based on hedge mode setting
+  - Added conditional logic: `reduceOnly` only sent in one-way mode, not in hedge mode
+  - Properly sends `positionSide` parameter when in hedge mode
+  - Added circuit breaker to prevent infinite retry loops (disables after 3 failures)
+  - Enhanced position validation before attempting closure
+  - Improved error handling for various API error codes (-1106, -2022, -2019)
 - **Database Location Issue** - bot.db now correctly created in data/ directory instead of root
   - Updated config.py to use absolute path for database
   - Added automatic data directory creation if it doesn't exist
@@ -37,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Trade Filtering** - Enhanced filtering capabilities with improved performance
 - **Liquidation Notifications** - Toast notifications now display USDT values
 - **Documentation** - Condensed and improved clarity across all docs
+
+### 🧪 Testing
+- **Comprehensive Test Suite** - Added unit and integration tests for position monitor
+  - Unit tests for hedge mode order parameter validation
+  - Integration tests for instant profit capture flow
+  - Circuit breaker activation tests
+  - Order parameter verification script for debugging
 
 ---
 
