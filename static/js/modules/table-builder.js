@@ -16,26 +16,6 @@ window.DashboardModules.TableBuilder = (function() {
         const pnlPct = position.positionValue > 0 ? (pnl / position.positionValue * 100) : 0;
         const sideClass = position.side === 'LONG' ? 'position-long' : 'position-short';
 
-        // Calculate liquidation risk
-        const liqPrice = parseFloat(position.liquidationPrice || 0);
-        const markPrice = parseFloat(position.markPrice || 0);
-        let liqPriceClass = '';
-        let liqPriceDisplay = liqPrice > 0 ? `$${liqPrice.toFixed(4)}` : '-';
-
-        if (liqPrice > 0 && markPrice > 0) {
-            // Calculate percentage distance to liquidation
-            const liqDistance = position.side === 'LONG'
-                ? ((markPrice - liqPrice) / markPrice * 100)
-                : ((liqPrice - markPrice) / markPrice * 100);
-
-            // Add warning class if within 10% of liquidation
-            if (liqDistance < 10) {
-                liqPriceClass = 'liquidation-warning';
-            } else if (liqDistance < 20) {
-                liqPriceClass = 'liquidation-caution';
-            }
-        }
-
 
         row.innerHTML = `
             <td>${position.symbol}</td>
@@ -43,7 +23,6 @@ window.DashboardModules.TableBuilder = (function() {
             <td>${Math.abs(position.positionAmt).toFixed(4)}</td>
             <td>$${parseFloat(position.entryPrice).toFixed(4)}</td>
             <td>$${parseFloat(position.markPrice).toFixed(4)}</td>
-            <td class="${liqPriceClass}">${liqPriceDisplay}</td>
             <td class="${pnl >= 0 ? 'positive' : 'negative'}">
                 ${Utils.formatCurrency(pnl)}
             </td>
