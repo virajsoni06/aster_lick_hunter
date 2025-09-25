@@ -5,12 +5,13 @@ import time
 import urllib.parse
 import random
 from src.utils.config import config
-from src.utils.rate_limiter import RateLimiter
+from src.utils.enhanced_rate_limiter import EnhancedRateLimiter
 from src.utils.utils import log
 from src.utils.endpoint_weights import get_endpoint_weight
 
-# Global rate limiter instance
-rate_limiter = RateLimiter(reserve_pct=0.2)
+# Global enhanced rate limiter instance
+# Disable monitoring to avoid threading issues in Flask and tests
+rate_limiter = EnhancedRateLimiter(buffer_pct=0.1, reserve_pct=0.2, enable_monitoring=False)
 
 def create_signature(query_string, secret):
     """Create HMAC SHA256 signature."""
@@ -20,10 +21,9 @@ def make_authenticated_request(method, url, data=None, params=None):
     """Make an authenticated request using HMAC signature."""
     timestamp = int(time.time() * 1000)
 
-    # Get the endpoint weight
+    # Parse endpoint for rate limiting
     parsed_url = urllib.parse.urlparse(url)
     endpoint_path = parsed_url.path
-    weight = get_endpoint_weight(endpoint_path)
 
     # Determine priority for rate limiting
     is_order = False
@@ -33,9 +33,13 @@ def make_authenticated_request(method, url, data=None, params=None):
         priority = 'critical'
         is_order = True
 
-    # Wait if needed before making request (check limits considering this request's weight)
-    can_proceed, wait_time = rate_limiter.can_make_request(weight=weight, priority=priority)
+    # Determine request parameters for weight calculation
+    request_params = params if params is not None else data
+
+    # Wait if needed before making request (enhanced limiter calculates weight internally)
+    can_proceed, wait_time = rate_limiter.can_make_request(endpoint_path, method, params=request_params, priority=priority)
     if not can_proceed and wait_time:
+        weight = get_endpoint_weight(endpoint_path, method, request_params)
         log.info(f"Rate limit reached for {endpoint_path} (weight {weight}). Waiting {wait_time:.1f}s...")
         time.sleep(wait_time)
 
@@ -132,8 +136,8 @@ def make_authenticated_request(method, url, data=None, params=None):
     if response.status_code < 400:
         # Parse headers to sync current usage
         rate_limiter.parse_headers(response.headers)
-        # Record with actual weight
-        rate_limiter.record_request(weight)
+        # Record request (enhanced limiter calculates weight internally)
+        rate_limiter.record_request(endpoint_path, method.upper(), params=request_params)
         if is_order:
             rate_limiter.record_order()
 

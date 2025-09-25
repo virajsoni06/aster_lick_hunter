@@ -30,6 +30,7 @@ from src.api.routes.stats_routes import stats_bp
 from src.api.routes.pnl_routes import pnl_bp
 from src.api.routes.streaming_routes import streaming_bp
 from src.api.routes.health_routes import health_bp
+from src.api.routes.rate_limiter_routes import rate_limiter_bp
 
 # Initialize monitoring service (starts the monitoring thread)
 import src.api.services.monitoring_service
@@ -53,6 +54,7 @@ def create_app():
     app.register_blueprint(pnl_bp)
     app.register_blueprint(streaming_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(rate_limiter_bp)
 
     return app
 
