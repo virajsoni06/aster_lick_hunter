@@ -1,0 +1,30 @@
+# Testing dependencies for Aster Liquidation Hunter
+
+# Core testing framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.1.0
+pytest-mock>=3.11.0
+pytest-xdist>=3.3.0  # For parallel test execution
+
+# Mocking and fixtures
+responses>=0.23.0  # For mocking HTTP requests
+faker>=19.0.0  # For generating test data
+
+# Test utilities
+freezegun>=1.2.0  # For mocking datetime
+parameterized>=0.9.0  # For parameterized tests
+
+# Performance testing
+pytest-benchmark>=4.0.0  # For benchmarking tests
+
+# Code quality
+coverage>=7.2.0  # Code coverage measurement
+
+# API testing
+requests-mock>=1.11.0  # Alternative HTTP mocking
+
+# Async testing support
+aioresponses>=0.7.4  # For mocking async HTTP requests
+websocket-client>=1.6.0  # For WebSocket testing
