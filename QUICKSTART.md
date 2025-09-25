@@ -173,19 +173,30 @@ API keys let the bot trade on your behalf. Think of them as a special password f
 1. **Sign up using our referral link (supports development):**
    - Visit: https://www.asterdex.com/en/referral/3TixB2
    - Click "Register"
-   - Complete registration (email, password, etc.)
-   - Verify your email
+   - **Choose your registration method:**
+     - **Option A - Email Registration:**
+       - Enter your email address
+       - No password required
+       - Check your email and click the verification link
+     - **Option B - Web3 Wallet Connection:**
+       - Click "Connect Wallet"
+       - Select your preferred wallet
+       - Sign the connection request in your wallet
+   - Complete the registration process
 
 2. **Generate API Keys:**
    - Log into your Aster DEX account
-   - Go to Account → API Management
-   - Click "Create API"
-   - Give it a name like "Trading Bot"
-   - ⚠️ **IMPORTANT Settings:**
-     - ✅ Enable "Enable Trading"
-     - ✅ Enable "Enable Reading"
-     - ❌ Disable "Enable Withdrawal" (for safety!)
-   - Save your API Key and Secret somewhere safe!
+   - Go to [API Management](https://www.asterdex.com/en/api-management)
+   - Click "Create API" button
+   - In the modal dialog:
+     - **Label**: Enter a name like "Trading Bot"
+     - **IP restrictions (optional)**: It is recommended to enter the IP address of the machine running the bot for better security.
+   - Click "Create API" to generate your keys
+   - :warning: **IMPORTANT**: Save your API Key and Secret Key immediately - they won't be shown again!
+   - :warning: **Security Note**: Do not disclose your API keys to anyone to avoid asset losses
+
+   ![API Setup Dialog](docs/imgs/setup_api.png)
+
 
 ### Setting Up Your Keys:
 
