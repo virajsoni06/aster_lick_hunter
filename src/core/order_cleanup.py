@@ -12,6 +12,7 @@ from src.utils.auth import make_authenticated_request
 from src.utils.config import config
 from src.utils.utils import log
 from src.database.db import insert_order_relationship, get_db_conn
+from src.utils.state_manager import get_state_manager
 
 # Debug helper (disabled)
 def emergency_print(msg):
@@ -220,6 +221,12 @@ class OrderCleanup:
                 log.error(f"Cannot cancel order for {symbol}: order_id is missing or None")
                 return False
 
+            # Check state cache first to avoid redundant cancellation
+            state_manager = get_state_manager()
+            if state_manager.is_order_cancelled(order_id):
+                log.info(f"Order {order_id} already canceled (from cache), skipping API call")
+                return True
+
             url = f"{config.BASE_URL}/fapi/v1/order"
             params = {
                 'symbol': str(symbol),
@@ -231,6 +238,9 @@ class OrderCleanup:
 
             if response.status_code == 200:
                 log.info(f"Canceled orphaned order {order_id} for {symbol}")
+
+                # Update state manager
+                state_manager.mark_order_cancelled(order_id, symbol)
 
                 # Update database
                 self.update_order_canceled(order_id)
@@ -261,6 +271,8 @@ class OrderCleanup:
 
                 if error_code == -2011 and error_msg == "Unknown order sent.":
                     log.info(f"Order {order_id} already canceled or does not exist (treat as success)")
+                    # Update state manager
+                    state_manager.mark_order_cancelled(order_id, symbol)
                     # Update database as canceled to prevent further attempts
                     self.update_order_canceled(order_id)
 
@@ -739,14 +751,11 @@ class OrderCleanup:
                     log.debug(f"Position {symbol} {position_side} in recovery cooldown for {remaining_cooldown:.0f}s")
                     continue
 
-                # Check if we have recent failed attempts for this position
-                failed_attempts = self.failed_order_attempts.get(position_key, [])
-                recent_failures = [f for f in failed_attempts if current_time - f['timestamp'] < 300]  # Last 5 minutes
-
-                if len(recent_failures) >= 3:
-                    log.warning(f"Position {symbol} {position_side} has {len(recent_failures)} recent failed attempts, skipping recovery")
-                    # Clean up old failed attempts
-                    self.failed_order_attempts[position_key] = recent_failures
+                # Use state manager for failure tracking
+                state_manager = get_state_manager()
+                recovery_key = f"{symbol}_{position_side}_recovery"
+                if not state_manager.should_retry(recovery_key, max_failures=3, window_seconds=300):
+                    log.warning(f"Position {symbol} {position_side} has too many recent failed attempts, skipping recovery")
                     continue
 
 
@@ -925,15 +934,13 @@ class OrderCleanup:
                                         sl_order_id = order_id
                                 else:
                                     log.error(f"Failed to place recovery order: {result}")
-                                    # Track failed attempt
-                                    position_key = f"{symbol}_{position_side}"
-                                    if position_key not in self.failed_order_attempts:
-                                        self.failed_order_attempts[position_key] = []
-                                    self.failed_order_attempts[position_key].append({
-                                        'timestamp': time.time(),
-                                        'error': result,
-                                        'order_type': orders_to_place[i]['type']
-                                    })
+                                    # Track failed attempt in state manager
+                                    recovery_key = f"{symbol}_{position_side}_recovery"
+                                    state_manager.track_failed_attempt(
+                                        recovery_key,
+                                        result,
+                                        orders_to_place[i]['type']
+                                    )
 
                             # Collect recovery orders for batch storage
                             if tp_order_id or sl_order_id:
@@ -1064,6 +1071,7 @@ class OrderCleanup:
             Number of orders canceled
         """
         canceled_count = 0
+        state_manager = get_state_manager()
         orders = await self.get_open_orders(symbol)
 
         for order in orders:
@@ -1074,6 +1082,12 @@ class OrderCleanup:
             # Skip if we've already processed this order for closure
             if order_id in self.processed_closure_orders:
                 log.debug(f"Skipping already processed closure order {order_id}")
+                continue
+
+            # Check state cache to avoid redundant cancellation
+            if state_manager.is_order_cancelled(order_id):
+                log.debug(f"Order {order_id} already cancelled (from cache), skipping")
+                self.processed_closure_orders.add(order_id)
                 continue
 
             # Cancel all TP/SL/STOP orders for this symbol
@@ -1107,6 +1121,10 @@ class OrderCleanup:
         try:
             log.debug("Running order cleanup cycle")
 
+            # Clean up expired cache entries periodically
+            state_manager = get_state_manager()
+            state_manager.cleanup_expired_cache()
+
             # Get current positions
             positions = await self.get_positions()
 
@@ -1124,6 +1142,10 @@ class OrderCleanup:
 
             if missing_protection > 0:
                 log.warning(f"Position protection check: {missing_protection} positions missing TP/SL orders")
+
+            # Log state manager statistics periodically
+            if total_canceled > 0 or missing_protection > 0:
+                state_manager.log_stats()
 
             return {
                 'orphaned_tp_sl': orphaned_canceled,

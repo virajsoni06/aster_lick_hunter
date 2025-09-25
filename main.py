@@ -9,7 +9,9 @@ from src.core.streamer import LiquidationStreamer
 from src.core.trader import init_symbol_settings, evaluate_trade, order_batcher, send_batch_orders
 from src.core.order_cleanup import OrderCleanup
 from src.core.user_stream import UserDataStream
+from src.core.service_coordinator import ServiceCoordinator
 from src.utils.utils import log
+from src.utils.event_bus import get_event_bus
 
 # Import PositionMonitor if enabled
 position_monitor = None
@@ -97,57 +99,114 @@ def main():
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        # Initialize symbol settings (leverage/margin type)
+
+        # Initialize service coordinator for orchestrated startup
+        coordinator = ServiceCoordinator()
+
+        # Register services with dependencies
+        coordinator.register_service('symbol_settings', [])
+        coordinator.register_service('event_bus', [])
+        coordinator.register_service('position_monitor', ['event_bus'])
+        coordinator.register_service('order_cleanup', ['position_monitor'])
+        coordinator.register_service('user_stream', ['order_cleanup', 'position_monitor'])
+
+        # Define service initializers
+        async def init_symbol_settings_service(shared_state=None):
+            await init_symbol_settings()
+            return True
+
+        async def init_event_bus_service(shared_state=None):
+            event_bus = get_event_bus()
+            event_bus.start()
+            log.info("Event bus started")
+            return event_bus
+
+        # Initialize symbol settings (leverage/margin type) - keeping original for now
         await init_symbol_settings()
 
-        # Initialize PositionMonitor if enabled
-        global position_monitor
-        position_monitor_task = None
-        if config.GLOBAL_SETTINGS.get('use_position_monitor', False):
-            log.info("PositionMonitor enabled - initializing unified TP/SL management")
-            position_monitor = PositionMonitor()
-            position_monitor_task = asyncio.create_task(position_monitor.start())
-            # Make it available to trader module
-            import src.core.trader as trader
-            trader.position_monitor = position_monitor
-            await asyncio.sleep(0.1)  # Let it initialize
-        else:
-            log.info("PositionMonitor disabled - using legacy TP/SL system")
+        # Use service coordinator to initialize services in order with shared state
+        async def init_position_monitor_service(shared_state=None):
+            global position_monitor
+            if config.GLOBAL_SETTINGS.get('use_position_monitor', False):
+                log.info("PositionMonitor enabled - initializing unified TP/SL management")
+                position_monitor = PositionMonitor()
+                # Use shared state for recovery if available
+                if shared_state:
+                    await position_monitor.recover_from_database(shared_state)
+                position_monitor_task = asyncio.create_task(position_monitor.start())
+                # Make it available to trader module
+                import src.core.trader as trader
+                trader.position_monitor = position_monitor
+                await asyncio.sleep(0.1)  # Let it initialize
+                return position_monitor
+            else:
+                log.info("PositionMonitor disabled - using legacy TP/SL system")
+                return None
 
-        # Initialize order cleanup manager
-        cleanup_interval = config.GLOBAL_SETTINGS.get('order_cleanup_interval_seconds', 20)
-        stale_limit_minutes = config.GLOBAL_SETTINGS.get('stale_limit_order_minutes', 3.0)
-        order_cleanup = OrderCleanup(
-            get_db_conn(),
-            cleanup_interval_seconds=cleanup_interval,
-            stale_limit_order_minutes=stale_limit_minutes,
-            position_monitor=position_monitor
-        )
-        order_cleanup.start()
-        log.info(f"Order cleanup started: interval={cleanup_interval}s, stale_limit={stale_limit_minutes}min")
+        async def init_order_cleanup_service(shared_state=None):
+            cleanup_interval = config.GLOBAL_SETTINGS.get('order_cleanup_interval_seconds', 20)
+            stale_limit_minutes = config.GLOBAL_SETTINGS.get('stale_limit_order_minutes', 3.0)
+            # Get position_monitor from coordinator services
+            pm = coordinator.services.get('position_monitor', {}).instance
+            order_cleanup = OrderCleanup(
+                get_db_conn(),
+                cleanup_interval_seconds=cleanup_interval,
+                stale_limit_order_minutes=stale_limit_minutes,
+                position_monitor=pm
+            )
+            order_cleanup.start()
+            log.info(f"Order cleanup started: interval={cleanup_interval}s, stale_limit={stale_limit_minutes}min")
 
-        # Small delay to ensure task gets scheduled
-        await asyncio.sleep(0.5)
+            # Small delay to ensure task gets scheduled
+            await asyncio.sleep(0.5)
 
-        # Verify cleanup task is running
-        if order_cleanup.cleanup_task and not order_cleanup.cleanup_task.done():
-            log.info("[OK] OrderCleanup task confirmed running")
-            # Extra delay to allow initial cleanup_loop log to appear
-            await asyncio.sleep(0.1)
-        else:
-            log.warning("[WARN] OrderCleanup task may have failed to start")
+            # Verify cleanup task is running
+            if order_cleanup.cleanup_task and not order_cleanup.cleanup_task.done():
+                log.info("[OK] OrderCleanup task confirmed running")
+                # Extra delay to allow initial cleanup_loop log to appear
+                await asyncio.sleep(0.1)
+            else:
+                log.warning("[WARN] OrderCleanup task may have failed to start")
+            return order_cleanup
+
+        # Initialize services through coordinator
+        service_initializers = {
+            'symbol_settings': init_symbol_settings_service,
+            'event_bus': init_event_bus_service,
+            'position_monitor': init_position_monitor_service,
+            'order_cleanup': init_order_cleanup_service
+        }
+
+        # Start services with coordination
+        startup_success = await coordinator.start_services(service_initializers)
+
+        if not startup_success:
+            log.error("Service startup failed, exiting...")
+            sys.exit(1)
+
+        # Get initialized services from coordinator
+        position_monitor = coordinator.services.get('position_monitor', {}).instance
+        order_cleanup = coordinator.services.get('order_cleanup', {}).instance
 
         # Initialize user data stream for real-time position updates
-        user_stream = UserDataStream(
-            order_manager=None,  # Can add OrderManager if needed
-            position_manager=None,  # Can add PositionManager if needed
-            db_conn=get_db_conn(),
-            order_cleanup=order_cleanup,
-            position_monitor=position_monitor  # Pass PositionMonitor
-        )
+        async def init_user_stream_service(shared_state=None):
+            # Get services from coordinator
+            oc = coordinator.services.get('order_cleanup', {}).instance
+            pm = coordinator.services.get('position_monitor', {}).instance
+            user_stream = UserDataStream(
+                order_manager=None,  # Can add OrderManager if needed
+                position_manager=None,  # Can add PositionManager if needed
+                db_conn=get_db_conn(),
+                order_cleanup=oc,
+                position_monitor=pm  # Pass PositionMonitor
+            )
+            # Start user stream in background
+            user_stream_task = asyncio.create_task(user_stream.start())
+            return user_stream
 
-        # Start user stream in background
-        user_stream_task = asyncio.create_task(user_stream.start())
+        # Add user_stream to service initializers and start it
+        coordinator.services['user_stream'].instance = await init_user_stream_service(coordinator.shared_state)
+        user_stream = coordinator.services['user_stream'].instance
         log.info("User data stream started for position monitoring")
 
         # Start batch order processor if enabled

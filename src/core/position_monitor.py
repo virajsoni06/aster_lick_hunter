@@ -15,6 +15,8 @@ from src.utils.config import config
 from src.utils.auth import make_authenticated_request
 from src.database.db import get_db_conn, update_tranche_orders, insert_order_relationship
 from src.utils.utils import log
+from src.utils.state_manager import get_state_manager
+from src.utils.event_bus import get_event_bus, EventType, Event
 import math
 
 # Use the colored logger
@@ -80,6 +82,10 @@ class PositionMonitor:
 
         # Order tracking for fills
         self.pending_orders = {}  # order_id -> order_data
+
+        # Integration with state manager and event bus
+        self.state_manager = get_state_manager()
+        self.event_bus = get_event_bus()
 
         logger.info(f"PositionMonitor initialized (enabled={self.use_position_monitor}, instant_tp={self.instant_tp_enabled})")
 
@@ -735,35 +741,52 @@ class PositionMonitor:
         except Exception as e:
             logger.error(f"Error persisting tranche orders: {e}")
 
-    async def recover_from_database(self):
+    async def recover_from_database(self, shared_state: Dict[str, Any] = None):
         """Recover position state from database on startup - verify against exchange."""
         logger.info("Recovering positions from database")
 
-        # First, get actual positions from exchange to validate against
+        # Use shared state if provided (from service coordinator)
         active_positions = {}
-        try:
-            from src.utils.auth import make_authenticated_request
-            response = make_authenticated_request(
-                'GET',
-                f"{config.BASE_URL}/fapi/v2/positionRisk"
-            )
 
-            if response.status_code == 200:
-                for pos in response.json():
-                    amt = float(pos.get('positionAmt', 0))
-                    if amt != 0:
-                        symbol = pos['symbol']
-                        side = 'LONG' if amt > 0 else 'SHORT'
-                        active_positions[f"{symbol}_{side}"] = {
-                            'quantity': abs(amt),
-                            'entry_price': float(pos.get('entryPrice', 0)),
-                            'mark_price': float(pos.get('markPrice', 0))
-                        }
-                logger.info(f"Found {len(active_positions)} active positions on exchange")
-            else:
-                logger.warning(f"Failed to fetch exchange positions: {response.status_code}")
-        except Exception as e:
-            logger.error(f"Error fetching exchange positions: {e}")
+        if shared_state and 'exchange_state' in shared_state:
+            # Use pre-fetched exchange state from service coordinator
+            positions = shared_state['exchange_state'].get('positions', [])
+            for pos in positions:
+                amt = float(pos.get('positionAmt', 0))
+                if amt != 0:
+                    symbol = pos['symbol']
+                    side = 'LONG' if amt > 0 else 'SHORT'
+                    active_positions[f"{symbol}_{side}"] = {
+                        'quantity': abs(amt),
+                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'mark_price': float(pos.get('markPrice', 0))
+                    }
+            logger.info(f"Using {len(active_positions)} active positions from shared state")
+        else:
+            # Fallback to fetching from exchange directly
+            try:
+                from src.utils.auth import make_authenticated_request
+                response = make_authenticated_request(
+                    'GET',
+                    f"{config.BASE_URL}/fapi/v2/positionRisk"
+                )
+
+                if response.status_code == 200:
+                    for pos in response.json():
+                        amt = float(pos.get('positionAmt', 0))
+                        if amt != 0:
+                            symbol = pos['symbol']
+                            side = 'LONG' if amt > 0 else 'SHORT'
+                            active_positions[f"{symbol}_{side}"] = {
+                                'quantity': abs(amt),
+                                'entry_price': float(pos.get('entryPrice', 0)),
+                                'mark_price': float(pos.get('markPrice', 0))
+                            }
+                    logger.info(f"Found {len(active_positions)} active positions on exchange")
+                else:
+                    logger.warning(f"Failed to fetch exchange positions: {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error fetching exchange positions: {e}")
 
         try:
             conn = get_db_conn()
