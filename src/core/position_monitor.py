@@ -38,6 +38,9 @@ class Tranche:
     sl_enabled: bool = True
     created_at: float = field(default_factory=time.time)
     last_updated: float = field(default_factory=time.time)
+    # Processing state flags to prevent re-entrant closure attempts
+    _is_closing: bool = field(default=False, init=False, repr=False)
+    _closing_started_at: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self):
         """Calculate TP/SL prices if not set."""
@@ -974,6 +977,18 @@ class PositionMonitor:
                 tranches = self.positions[position_key].get('tranches', {})
 
                 for tranche_id, tranche in list(tranches.items()):
+                    # Skip if already being closed
+                    if getattr(tranche, '_is_closing', False):
+                        # Check for timeout (30 seconds)
+                        if time.time() - getattr(tranche, '_closing_started_at', 0) > 30:
+                            # Reset flag after timeout
+                            tranche._is_closing = False
+                            tranche._closing_started_at = 0
+                            logger.warning(f"Reset closing flag for {symbol} tranche {tranche_id} after timeout")
+                        else:
+                            # Still closing, skip this tranche
+                            continue
+
                     # Check if mark price exceeded TP
                     should_close = False
                     exceeded_price = None
@@ -981,14 +996,20 @@ class PositionMonitor:
                     if side == 'LONG' and tranche.tp_enabled and mark_price >= tranche.tp_price:
                         should_close = True
                         exceeded_price = tranche.tp_price
-                        logger.info(f"LONG TP triggered: {symbol} mark {mark_price:.6f} >= TP {tranche.tp_price:.6f}")
+                        # Only log once when we decide to close
+                        logger.info(f"LONG TP triggered: {symbol} mark {mark_price:.6f} >= TP {tranche.tp_price:.6f} - initiating closure")
 
                     elif side == 'SHORT' and tranche.tp_enabled and mark_price <= tranche.tp_price:
                         should_close = True
                         exceeded_price = tranche.tp_price
-                        logger.info(f"SHORT TP triggered: {symbol} mark {mark_price:.6f} <= TP {tranche.tp_price:.6f}")
+                        # Only log once when we decide to close
+                        logger.info(f"SHORT TP triggered: {symbol} mark {mark_price:.6f} <= TP {tranche.tp_price:.6f} - initiating closure")
 
                     if should_close:
+                        # Mark as closing before releasing lock
+                        tranche._is_closing = True
+                        tranche._closing_started_at = time.time()
+
                         # Release lock before async operation
                         self.lock.release()
                         try:
@@ -998,10 +1019,18 @@ class PositionMonitor:
 
     async def instant_close_tranche(self, tranche: Tranche, mark_price: float):
         """Close tranche immediately at market price."""
+        # Double-check that we're not already processing this tranche
+        # This is an extra safety check in case of race conditions
+        if not getattr(tranche, '_is_closing', False):
+            logger.debug(f"Tranche {tranche.id} not marked as closing, skipping")
+            return
+
         # Check if circuit breaker is active for this tranche
         if hasattr(tranche, '_instant_close_disabled_until'):
             if time.time() < tranche._instant_close_disabled_until:
-                # Still in cooldown period
+                # Still in cooldown period, reset closing flag
+                tranche._is_closing = False
+                tranche._closing_started_at = 0
                 return
             else:
                 # Cooldown expired, reset failure counter
@@ -1099,6 +1128,8 @@ class PositionMonitor:
             # Remove tranche from tracking
             self.remove_tranche(tranche.symbol, tranche.side, tranche.id)
 
+            # No need to reset closing flag since the tranche is removed
+
             # Update database
             try:
                 conn = get_db_conn()
@@ -1153,6 +1184,9 @@ class PositionMonitor:
                     await self._cancel_order(tranche.symbol, tranche.tp_order_id)
                 if tranche.sl_order_id:
                     await self._cancel_order(tranche.symbol, tranche.sl_order_id)
+                # Reset closing flag since we're done
+                tranche._is_closing = False
+                tranche._closing_started_at = 0
                 return
             elif error_code == -2022:
                 # ReduceOnly Order is rejected (position doesn't exist)
@@ -1163,6 +1197,9 @@ class PositionMonitor:
                     await self._cancel_order(tranche.symbol, tranche.tp_order_id)
                 if tranche.sl_order_id:
                     await self._cancel_order(tranche.symbol, tranche.sl_order_id)
+                # Reset closing flag since we're done
+                tranche._is_closing = False
+                tranche._closing_started_at = 0
                 return
             elif error_code == -2019:
                 # Margin insufficient
@@ -1171,6 +1208,8 @@ class PositionMonitor:
                 logger.error(f"Failed to place market order for instant closure: {error_msg}")
                 if error_code:
                     logger.error(f"Error code: {error_code}")
+                # Log full API response for debugging
+                logger.error(f"API Response: {json.dumps(result, indent=2) if isinstance(result, dict) else str(result)}")
 
             # Implement circuit breaker - disable instant closure for this tranche temporarily
             if not hasattr(tranche, '_instant_close_failures'):
@@ -1182,3 +1221,7 @@ class PositionMonitor:
                 tranche._instant_close_disabled_until = time.time() + 300  # Disable for 5 minutes
             else:
                 logger.info(f"Temporarily disabling instant closure for tranche {tranche.id} (failure {tranche._instant_close_failures}/3)")
+
+            # Reset closing flag on failure so it can be retried
+            tranche._is_closing = False
+            tranche._closing_started_at = 0
