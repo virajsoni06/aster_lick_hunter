@@ -1,9 +1,15 @@
 import sqlite3
 import time
+import os
 from src.utils.config import config
 
 def init_db(db_path):
     """Initialize the SQLite database with tables."""
+    # Ensure the directory exists
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
