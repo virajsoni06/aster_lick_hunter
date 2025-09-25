@@ -59,11 +59,19 @@ def get_positions():
         # Determine side
         pos['side'] = 'LONG' if pos_amt > 0 else 'SHORT' if pos_amt < 0 else 'NONE'
 
-        # Map margin based on margin type
+        # Calculate margin correctly for both isolated and cross positions
+        # Aster API doesn't provide initialMargin, so we calculate it as positionValue / leverage
         if margin_type == 'isolated':
-            margin = pos.get('isolatedMargin', 0)
+            # For isolated positions, use isolatedMargin if available
+            margin = float(pos.get('isolatedMargin', 0))
+
+            # If isolatedMargin is 0, calculate it (shouldn't happen for isolated positions)
+            if margin == 0 and pos['positionValue'] > 0:
+                margin = pos['positionValue'] / float(pos.get('leverage', 1))
         else:
+            # For cross positions, calculate as positionValue / leverage
             margin = pos['positionValue'] / float(pos.get('leverage', 1)) if pos['positionValue'] > 0 else 0
+
         pos['initialMargin'] = float(margin)
 
         # Calculate liquidation price based on margin type
