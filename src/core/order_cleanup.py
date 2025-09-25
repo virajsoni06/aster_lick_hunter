@@ -25,7 +25,7 @@ class OrderCleanup:
     """
 
     def __init__(self, db_conn, cleanup_interval_seconds: int = 20,
-                 stale_limit_order_minutes: float = 3.0):
+                 stale_limit_order_minutes: float = 3.0, position_monitor=None):
         """
         Initialize order cleanup manager.
 
@@ -33,7 +33,9 @@ class OrderCleanup:
             db_conn: Database connection
             cleanup_interval_seconds: How often to run cleanup (default 20 seconds)
             stale_limit_order_minutes: Age in minutes before limit order is considered stale
+            position_monitor: Optional PositionMonitor instance for order registration
         """
+        self.position_monitor = position_monitor
         # Database connection no longer stored - use fresh connections instead
         self.cleanup_interval_seconds = cleanup_interval_seconds
         self.stale_limit_order_seconds = stale_limit_order_minutes * 60
@@ -829,7 +831,7 @@ class OrderCleanup:
                         'timeInForce': 'GTC'
                     }
 
-                    # In hedge mode, reduceOnly is not allowed for TP/SL orders
+                    # IMPORTANT: Do NOT add reduceOnly to TP/SL orders in hedge mode!
                     # Position side handles the direction automatically
 
                     orders_to_place.append(tp_order)
@@ -1017,6 +1019,21 @@ class OrderCleanup:
                             self.processed_closure_orders.discard(recovery_order['tp_order_id'])  # Ensure not in closure set
                         if recovery_order['sl_order_id']:
                             self.processed_closure_orders.discard(recovery_order['sl_order_id'])  # Ensure not in closure set
+
+                        # Register recovery orders with position monitor if available
+                        if self.position_monitor:
+                            try:
+                                # Register TP order as a recovery order
+                                if recovery_order['tp_order_id']:
+                                    await self.position_monitor.register_order({
+                                        'order_id': recovery_order['tp_order_id'],
+                                        'symbol': recovery_order['symbol'],
+                                        'side': 'BUY',  # TP orders are opposing position side
+                                        'quantity': 0,  # Will be filled in by position monitor
+                                        'type': 'recovery_tp'
+                                    })
+                            except Exception as e:
+                                log.error(f"Failed to register recovery orders with position monitor: {e}")
 
                     except Exception as e:
                         log.error(f"Error storing recovery order relationship for {recovery_order['symbol']}: {e}")

@@ -120,7 +120,8 @@ def main():
         order_cleanup = OrderCleanup(
             get_db_conn(),
             cleanup_interval_seconds=cleanup_interval,
-            stale_limit_order_minutes=stale_limit_minutes
+            stale_limit_order_minutes=stale_limit_minutes,
+            position_monitor=position_monitor
         )
         order_cleanup.start()
         log.info(f"Order cleanup started: interval={cleanup_interval}s, stale_limit={stale_limit_minutes}min")

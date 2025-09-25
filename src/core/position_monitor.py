@@ -653,8 +653,11 @@ class PositionMonitor:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"Order placement failed: {response.text}")
-                return None
+                # Return error response for caller to parse
+                try:
+                    return {'error': response.json()}
+                except:
+                    return {'error': {'msg': response.text, 'code': response.status_code}}
 
         except Exception as e:
             logger.error(f"Error placing order: {e}")
@@ -1089,6 +1092,30 @@ class PositionMonitor:
                 logger.error(f"Error updating database for instant closure: {e}")
 
         else:
-            logger.error(f"Failed to place market order for instant closure")
+            # Check if this is the specific error about reduceOnly not being required
+            try:
+                import json
+                error_data = json.loads(result.get('msg', '{}') if isinstance(result, dict) else result or '{}')
+                error_code = error_data.get('code') if isinstance(error_data, dict) else None
+
+                # Error code -1106 means 'Parameter 'reduceOnly' sent when not required'
+                if error_code == -1106:
+                    logger.warning(f"Position {tranche.symbol} tranche {tranche.id} already closed (error -1106), removing from monitor")
+                    # Remove tranche from tracking since position no longer exists
+                    self.remove_tranche(tranche.symbol, tranche.side, tranche.id)
+                    # Cancel any remaining orders
+                    if tranche.tp_order_id:
+                        await self._cancel_order(tranche.symbol, tranche.tp_order_id)
+                    if tranche.sl_order_id:
+                        await self._cancel_order(tranche.symbol, tranche.sl_order_id)
+                    return
+                else:
+                    logger.error(f"Failed to place market order for instant closure: {result}")
+            except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                logger.error(f"Failed to place market order for instant closure: {result}")
+                logger.error(f"Error parsing response: {e}")
+
             # Re-enable TP order tracking since we couldn't close
             tranche.tp_order_id = tranche.tp_order_id
+            # Don't trigger instant closure again for this tranche within a short timeframe
+            logger.info(f"Temporarily disabling instant closure for tranche {tranche.id} to prevent loops")
