@@ -10,9 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🚀 Added
-- Comprehensive documentation suite (QUICKSTART, TROUBLESHOOTING, CONTRIBUTING)
-- Enhanced README with beginner-friendly sections
-- GitHub wiki structure documentation
+- **Enhanced Rate Limiter** - Dynamic endpoint weights for improved API rate limit management
+- **Order Recovery System** - Failed attempt tracking with recovery cooldowns
+- **Retry Logic** - Automatic retry for position fetching with configurable attempts
+- **Trade History Enhancements** - Extended default range and improved UI controls
+- **Liquidation Buffering** - Collects liquidations before batch processing
+- **Order Batching** - Batch order submission for API efficiency
+- **Header Improvements** - Added logo and social links (GitHub, Aster DEX, Discord)
+- **Mobile Responsiveness** - Better dashboard experience on mobile devices
+- **Documentation Suite** - QUICKSTART, TROUBLESHOOTING, CONTRIBUTING guides
+- **Enhanced README** - User-friendly structure with video tutorials and feature details
+
+### 🔧 Fixed
+- **Database Location Issue** - bot.db now correctly created in data/ directory instead of root
+  - Updated config.py to use absolute path for database
+  - Added automatic data directory creation if it doesn't exist
+  - Ensured all database connections use the correct path
+- **Margin Calculation Logic** - Improved handling for isolated and cross positions
+- **Position Monitor** - Enhanced TP/SL fill handling and close logic
+- **Re-entrant Locking** - Replaced Lock with RLock in PositionMonitor for thread safety
+- **Multi-Assets Mode** - Enhanced error handling for mode changes
+- **Recovery Cooldown** - Reduced cooldown time and improved margin type error handling
+
+### 🛠️ Changed
+- **Logging System** - Reduced verbosity in batch order logging for cleaner output
+- **Trade Filtering** - Enhanced filtering capabilities with improved performance
+- **Liquidation Notifications** - Toast notifications now display USDT values
+- **Documentation** - Condensed and improved clarity across all docs
 
 ---
 
